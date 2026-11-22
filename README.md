@@ -44,7 +44,9 @@ Full byte-level documentation (USB modes, enable command, 64-byte telemetry layo
 ├── docs/
 │   └── PROTOCOL.md       # 2.4 GHz dongle HID protocol reference
 ├── assets/
-│   └── 8bitdo_pro3.svg   # Controller artwork (embedded in the GUI)
+│   ├── 8bitdo_pro3.svg   # Controller artwork (embedded in the GUI)
+│   ├── app_icon.svg      # App icon source (window + tray)
+│   └── app_icon.ico      # Multi-size icon embedded in pro3-bridge.exe
 ├── .github/workflows/    # Windows release build (CI)
 ├── README.md / README_ES.md
 └── LICENSE

@@ -16,15 +16,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use ui::{Pro3App, PRO3_SVG};
+use ui::Pro3App;
 
-/// Renders the embedded 8BitDo Pro 3 SVG into a square RGBA icon (for window taskbar + system tray).
+/// Dedicated square application icon (the .exe icon is the same artwork, see build.rs).
+const APP_ICON_SVG: &[u8] = include_bytes!("../../assets/app_icon.svg");
+
+/// Renders the embedded app icon SVG into a square RGBA icon (for window taskbar + system tray).
 fn render_square_icon(size: u32) -> Option<Vec<u8>> {
     let opt = resvg::usvg::Options::default();
-    let tree = resvg::usvg::Tree::from_data(PRO3_SVG, &opt).ok()?;
+    let tree = resvg::usvg::Tree::from_data(APP_ICON_SVG, &opt).ok()?;
     let tw = tree.size().width();
     let th = tree.size().height();
-    let scale = (size as f32 / tw).min(size as f32 / th) * 0.96;
+    let scale = (size as f32 / tw).min(size as f32 / th);
     let dx = (size as f32 - tw * scale) * 0.5;
     let dy = (size as f32 - th * scale) * 0.5;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size)?;

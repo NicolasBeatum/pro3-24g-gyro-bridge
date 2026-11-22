@@ -1038,7 +1038,8 @@ fn draw_pro3_controller(
     max_h: f32,
 ) {
     let avail_w = ui.available_width();
-    let top_pad = 30.0;
+    // Room for the L2/R2 rails; the SVG's own top margin (bumpers start at y=27) does the rest.
+    let top_pad = 10.0;
     let w = avail_w
         .min(((max_h - top_pad - 4.0) * (640.0 / 430.0)).max(300.0))
         .min(560.0);
@@ -1057,8 +1058,8 @@ fn draw_pro3_controller(
     // 1) L2 / R2 analog trigger bars — thin rails right above the shoulders.
     trigger_rail(
         p,
-        ox + 92.0 * scale,
-        ox + 230.0 * scale,
+        ox + 70.0 * scale,
+        ox + 206.0 * scale,
         rect.top() + 4.0,
         "L2",
         st.l2,
@@ -1067,8 +1068,8 @@ fn draw_pro3_controller(
     );
     trigger_rail(
         p,
-        ox + 410.0 * scale,
-        ox + 548.0 * scale,
+        ox + 434.0 * scale,
+        ox + 570.0 * scale,
         rect.top() + 4.0,
         "R2",
         st.r2,
@@ -1077,10 +1078,10 @@ fn draw_pro3_controller(
     );
 
     // 2) Rumble halos sit *behind* the outline so the line art stays crisp.
-    for (val, cx) in [(rumble_l, 112.0), (rumble_r, 528.0)] {
+    for (val, cx) in [(rumble_l, 118.0), (rumble_r, 522.0)] {
         if val > 0 {
             let k = val as f32 / 255.0;
-            let c = pt(cx, 318.0);
+            let c = pt(cx, 334.0);
             for (rr, a) in [(78.0, 10.0), (60.0, 20.0), (44.0, 34.0), (28.0, 48.0)] {
                 p.circle_filled(c, sc(rr), with_alpha(ACCENT_AMBER, (a * k) as u8));
             }
@@ -1098,20 +1099,42 @@ fn draw_pro3_controller(
         );
     }
 
-    // 4) L1 / R1 bumpers.
+    // 4) L1 / R1 bumpers: curved bands concentric with the upper lobes (centre (162,148),
+    //    band radius 116.25, 7.5 thick), sweeping from -152° over the top to x=206.
+    let bumper = |mirror: bool| {
+        let (lcx, lcy, br) = (162.0f32, 148.0f32, 116.25f32);
+        let a0 = (-152.0f32).to_radians();
+        let mut pts: Vec<Pos2> = (0..=28)
+            .map(|i| {
+                let a = a0 + (-FRAC_PI_2 - a0) * (i as f32 / 28.0);
+                (lcx + br * a.cos(), lcy + br * a.sin())
+            })
+            .chain(std::iter::once((205.0, lcy - br)))
+            .map(|(x, y)| if mirror { pt(640.0 - x, y) } else { pt(x, y) })
+            .collect();
+        pts.dedup();
+        let band = sc(7.5);
+        for (extra, a) in [(14.0, 8u8), (8.0, 18), (3.5, 40)] {
+            let w = band + sc(extra);
+            p.add(Shape::line(pts.clone(), Stroke::new(w, with_alpha(ACCENT_CYAN, a))));
+            p.circle_filled(pts[0], w * 0.5, with_alpha(ACCENT_CYAN, a));
+        }
+        p.circle_filled(pts[0], band * 0.5, with_alpha(ACCENT_CYAN, 210));
+        p.add(Shape::line(pts, Stroke::new(band, with_alpha(ACCENT_CYAN, 210))));
+    };
     if on(BTN_L1) {
-        glow_rect(p, Rect::from_min_max(pt(82.0, 56.0), pt(208.0, 78.0)), sc(11.0), ACCENT_CYAN, scale);
+        bumper(false);
     }
     if on(BTN_R1) {
-        glow_rect(p, Rect::from_min_max(pt(432.0, 56.0), pt(558.0, 78.0)), sc(11.0), ACCENT_CYAN, scale);
+        bumper(true);
     }
 
-    // 5) D-Pad arms around (152,164).
+    // 5) D-Pad arms around (162,121): arms ±44 long, 31 wide.
     let dpad = [
-        (BTN_DUP, (137.0, 118.0, 167.0, 152.0)),
-        (BTN_DDOWN, (137.0, 176.0, 167.0, 210.0)),
-        (BTN_DLEFT, (106.0, 149.0, 140.0, 179.0)),
-        (BTN_DRIGHT, (164.0, 149.0, 198.0, 179.0)),
+        (BTN_DUP, (146.5, 77.0, 177.5, 108.5)),
+        (BTN_DDOWN, (146.5, 133.5, 177.5, 165.0)),
+        (BTN_DLEFT, (118.0, 105.5, 149.5, 136.5)),
+        (BTN_DRIGHT, (174.5, 105.5, 206.0, 136.5)),
     ];
     for (mask, (x0, y0, x1, y1)) in dpad {
         if on(mask) {
@@ -1121,29 +1144,29 @@ fn draw_pro3_controller(
 
     // 6) Face buttons — Xbox-like hue mapping on the refined palette.
     let face = [
-        (BTN_NORTH, (488.0, 124.0), ACCENT_AMBER),
-        (BTN_WEST, (440.0, 164.0), ACCENT_CYAN),
-        (BTN_EAST, (536.0, 164.0), ACCENT_CORAL),
-        (BTN_SOUTH, (488.0, 204.0), ACCENT_GREEN),
+        (BTN_NORTH, (478.0, 78.0), ACCENT_AMBER),
+        (BTN_WEST, (434.0, 122.0), ACCENT_CYAN),
+        (BTN_EAST, (522.0, 122.0), ACCENT_CORAL),
+        (BTN_SOUTH, (478.0, 166.0), ACCENT_GREEN),
     ];
     for (mask, (x, y), col) in face {
         if on(mask) {
-            glow_circle(p, pt(x, y), sc(19.0), col);
+            glow_circle(p, pt(x, y), sc(18.0), col);
         }
     }
 
     // 7) -select / +start / Star / Home.
     if on(BTN_MINUS) {
-        glow_rect(p, Rect::from_min_max(pt(268.0, 150.0), pt(312.0, 166.0)), sc(8.0), ACCENT_CYAN, scale);
+        glow_rect(p, Rect::from_min_max(pt(273.0, 115.5), pt(313.0, 128.5)), sc(6.5), ACCENT_CYAN, scale);
     }
     if on(BTN_PLUS) {
-        glow_rect(p, Rect::from_min_max(pt(328.0, 150.0), pt(372.0, 166.0)), sc(8.0), ACCENT_CYAN, scale);
+        glow_rect(p, Rect::from_min_max(pt(327.0, 115.5), pt(367.0, 128.5)), sc(6.5), ACCENT_CYAN, scale);
     }
     if on(BTN_CAPTURE) {
-        glow_circle(p, pt(152.0, 242.0), sc(13.0), ACCENT_AMBER);
+        glow_circle(p, pt(162.0, 216.0), sc(11.0), ACCENT_AMBER);
     }
     if on(BTN_HOME) {
-        glow_circle(p, pt(488.0, 242.0), sc(14.0), ACCENT_VIOLET);
+        glow_circle(p, pt(478.0, 216.0), sc(11.0), ACCENT_VIOLET);
     }
 
     // 8) Analog sticks — dark well, faint crosshair, crisp moving ring + dot.
@@ -1190,10 +1213,10 @@ fn draw_pro3_controller(
         p.circle_stroke(knob, sc(8.5), Stroke::new(1.8, col));
         p.circle_filled(knob, sc(3.2).max(2.0), col);
     };
-    stick(234.0, 240.0, st.lx, st.ly, on(BTN_L3));
-    stick(406.0, 240.0, st.rx, st.ry, on(BTN_R3));
+    stick(240.0, 206.0, st.lx, st.ly, on(BTN_L3));
+    stick(400.0, 206.0, st.rx, st.ry, on(BTN_R3));
 
-    // 9) PL / PR rear paddle pills below the centre arch.
+    // 9) PL / PR rear paddle pills in the open space between the grips.
     let pill = |cx: f32, cy: f32, text: &str, active: bool| {
         let size = Vec2::new(sc(52.0).max(38.0), sc(22.0).max(16.0));
         let r = Rect::from_center_size(pt(cx, cy), size);
@@ -1215,8 +1238,8 @@ fn draw_pro3_controller(
             if active { BG_CANVAS } else { TEXT_SECONDARY },
         );
     };
-    pill(276.0, 341.0, "PL", on(BTN_P1));
-    pill(364.0, 341.0, "PR", on(BTN_P2));
+    pill(276.0, 326.0, "PL", on(BTN_P1));
+    pill(364.0, 326.0, "PR", on(BTN_P2));
 }
 
 /// Thin analog trigger rail with label + tabular value, mirrored for the right trigger.

@@ -44,7 +44,9 @@ Documentación completa a nivel de bytes (modos USB, comando de activación, est
 ├── docs/
 │   └── PROTOCOL.md       # Referencia del protocolo HID del dongle 2.4 GHz
 ├── assets/
-│   └── 8bitdo_pro3.svg   # Ilustración del mando (incrustada en la GUI)
+│   ├── 8bitdo_pro3.svg   # Ilustración del mando (incrustada en la GUI)
+│   ├── app_icon.svg      # Ícono de la app (ventana + bandeja)
+│   └── app_icon.ico      # Ícono multitamaño incrustado en pro3-bridge.exe
 ├── .github/workflows/    # Compilación de release para Windows (CI)
 ├── README.md / README_ES.md
 └── LICENSE
