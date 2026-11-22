@@ -28,6 +28,28 @@ El firmware oficial del dongle 2.4 GHz (JieLi AC695x) incluye un modo de telemet
 - Acepta vibración por `Report ID 0x81` (`CUSTOM_CMD 0x08`).
 - Para volver el dongle al modo XInput de fábrica (`2DC8:310B`), simplemente cerrá la app y **desenchufá / volvé a enchufar el dongle**.
 
+Documentación completa a nivel de bytes (modos USB, comando de activación, estructura de telemetría de 64 bytes, máscara de botones, conversión de ejes de sensores, vibración): **[docs/PROTOCOL.md](docs/PROTOCOL.md)** (en inglés).
+
+## Estructura del proyecto
+
+```
+.
+├── pro3-bridge/          # App nativa en Rust con GUI (pro3-bridge.exe)
+│   ├── Cargo.toml
+│   └── src/              # protocol.rs · dsu.rs · vigem.rs · bridge.rs · ui.rs · config.rs · input_sim.rs
+├── python/               # Implementación de referencia en Python + lanzadores .bat
+│   ├── pro3_bridge.py    # Puente completo (servidor DSU, DS4/X360 virtual, gyro→mouse/stick)
+│   ├── pro3_24g_gyro.py  # Lector mínimo de telemetría
+│   └── *.bat             # Lanzadores de un clic (Steam / emuladores / volver a XInput)
+├── docs/
+│   └── PROTOCOL.md       # Referencia del protocolo HID del dongle 2.4 GHz
+├── assets/
+│   └── 8bitdo_pro3.svg   # Ilustración del mando (incrustada en la GUI)
+├── .github/workflows/    # Compilación de release para Windows (CI)
+├── README.md / README_ES.md
+└── LICENSE
+```
+
 ## Requisitos
 
 - **Windows 10 / 11 (64-bit)**
@@ -56,11 +78,20 @@ Con la app abierta (servidor UDP activo en `127.0.0.1:26760`):
 - **Ryujinx / Yuzu / Eden:** *Controles → Movimiento → CemuHookUDP →* `127.0.0.1:26760`.
 
 ### Versión Python incluida
-También se incluye la implementación de referencia en Python (`pro3_bridge.py` + `pro3_24g_gyro.py` y lanzadores `.bat`):
+La implementación de referencia en Python está en [`python/`](python/) (`pro3_bridge.py`, `pro3_24g_gyro.py` y lanzadores `.bat`):
 ```powershell
 pip install hidapi vgamepad
-python pro3_bridge.py
+python python/pro3_bridge.py
 ```
+O hacé doble clic en un lanzador dentro de `python/`:
+
+| Lanzador | Modo |
+|---|---|
+| `Iniciar_Steam_DS4_GyroNativo.bat` | DualShock 4 virtual con gyro nativo en Steam + DSU |
+| `Iniciar_Emuladores_DSU.bat` | Servidor DSU para emuladores + mando virtual |
+| `Iniciar_Steam_GyroMouse.bat` | Gyro → mouse (mantener L2) + DSU |
+| `Iniciar_Steam_GyroStick.bat` | Gyro → stick derecho (mantener L2) + DSU |
+| `Volver_a_XInput.bat` | Intenta volver el dongle a XInput (desenchufar y enchufar siempre funciona) |
 
 ## Licencia
 

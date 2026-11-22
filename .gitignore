@@ -24,3 +24,16 @@ paso3_revertir.ps1
 reparar_dongle.ps1
 sniff.py
 switch_dongle_mode.py
+
+# Local editor / OS clutter
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Firmware images / raw dumps (belt-and-braces; never publish vendor binaries)
+*.bin
+*.fw
+*.ufw
+*.hex
+*.dump

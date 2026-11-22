@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Check Python reference scripts
+        run: python -m py_compile python/pro3_bridge.py python/pro3_24g_gyro.py
       - name: Build pro3-bridge.exe
         working-directory: pro3-bridge
         run: cargo build --release

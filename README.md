@@ -28,6 +28,28 @@ The stock 2.4 GHz dongle firmware (JieLi AC695x) includes an in-RAM telemetry mo
 - Accepts dual-motor rumble via `Report ID 0x81` (`CUSTOM_CMD 0x08`).
 - To restore stock XInput mode (`2DC8:310B`), simply exit the app and **unplug & replug the USB dongle**.
 
+Full byte-level documentation (USB modes, enable command, 64-byte telemetry layout, button bitmask, sensor frame conversions, rumble): **[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
+
+## Project Structure
+
+```
+.
+├── pro3-bridge/          # Native Rust GUI app (pro3-bridge.exe)
+│   ├── Cargo.toml
+│   └── src/              # protocol.rs · dsu.rs · vigem.rs · bridge.rs · ui.rs · config.rs · input_sim.rs
+├── python/               # Python reference implementation + .bat launchers
+│   ├── pro3_bridge.py    # Full bridge (DSU server, virtual DS4/X360, gyro→mouse/stick)
+│   ├── pro3_24g_gyro.py  # Minimal telemetry reader
+│   └── *.bat             # One-click launchers (Steam / emulators / back to XInput)
+├── docs/
+│   └── PROTOCOL.md       # 2.4 GHz dongle HID protocol reference
+├── assets/
+│   └── 8bitdo_pro3.svg   # Controller artwork (embedded in the GUI)
+├── .github/workflows/    # Windows release build (CI)
+├── README.md / README_ES.md
+└── LICENSE
+```
+
 ## Requirements
 
 - **Windows 10 / 11 (64-bit)**
@@ -56,11 +78,20 @@ With `pro3-bridge.exe` running (UDP server active on `127.0.0.1:26760`):
 - **Ryujinx / Yuzu / Eden:** *Controls → Motion → Use CemuHookUDP →* `127.0.0.1:26760`.
 
 ### Python Reference Implementation
-A standalone Python implementation (`pro3_bridge.py` + `pro3_24g_gyro.py` and `.bat` launchers) is also included:
+A standalone Python implementation lives in [`python/`](python/) (`pro3_bridge.py`, `pro3_24g_gyro.py` and `.bat` launchers):
 ```powershell
 pip install hidapi vgamepad
-python pro3_bridge.py
+python python/pro3_bridge.py
 ```
+Or double-click a launcher inside `python/`:
+
+| Launcher | Mode |
+|---|---|
+| `Iniciar_Steam_DS4_GyroNativo.bat` | Virtual DualShock 4 with native Steam gyro + DSU |
+| `Iniciar_Emuladores_DSU.bat` | DSU server for emulators + virtual pad |
+| `Iniciar_Steam_GyroMouse.bat` | Gyro → mouse (hold L2) + DSU |
+| `Iniciar_Steam_GyroStick.bat` | Gyro → right stick (hold L2) + DSU |
+| `Volver_a_XInput.bat` | Try to return the dongle to XInput (replugging always works) |
 
 ## License
 
