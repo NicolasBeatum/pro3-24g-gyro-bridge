@@ -1,6 +1,10 @@
 # 8BitDo Pro 3 · 2.4 GHz Gyro Bridge (Windows)
 
-Habilita el **giroscopio + acelerómetro a 200 Hz**, **vibración dual**, **gatillos analógicos** y **botones extra (L4/R4/PL/PR)** del **8BitDo Pro 3** a través de su **dongle USB 2.4 GHz** en Windows — **sin modificar ni flashear firmware** (100% en RAM y reversible).
+<p align="center">
+  <img src="assets/8bitdo_pro3.svg" alt="8BitDo Pro 3 2.4 GHz Gyro Bridge" width="520"/>
+</p>
+
+Habilita el **giroscopio + acelerómetro a 200 Hz**, **vibración dual**, **gatillos analógicos** y **botones traseros (PL/PR)** del **8BitDo Pro 3** a través de su **dongle USB 2.4 GHz** en Windows — **sin modificar ni flashear firmware** (100% en RAM y reversible).
 
 ## Características
 
