@@ -10,16 +10,53 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnState {
+    Starting,
+    Stopped,
+    SwitchingMode,
+    WaitingForController,
+    DongleNotFound,
+    Calibrating,
+    Connected,
+    HidError(String),
+}
+
+impl ConnState {
+    pub fn label(&self, lang: Language) -> String {
+        match (lang, self) {
+            (Language::Es, ConnState::Starting) => "Iniciando...".into(),
+            (Language::Es, ConnState::Stopped) => "Detenido".into(),
+            (Language::Es, ConnState::SwitchingMode) => "Activando telemetría 200 Hz (2DC8:600A)...".into(),
+            (Language::Es, ConnState::WaitingForController) => "Dongle en espera — encendé el mando o tocá un botón".into(),
+            (Language::Es, ConnState::DongleNotFound) => "Conectá el dongle 2.4 GHz del 8BitDo Pro 3".into(),
+            (Language::Es, ConnState::Calibrating) => "Calibrando giroscopio (dejá el mando quieto 0.4s)...".into(),
+            (Language::Es, ConnState::Connected) => "Conectado (2.4 GHz · 200 Hz)".into(),
+            (Language::Es, ConnState::HidError(e)) => format!("Error HIDAPI: {e}"),
+
+            (Language::En, ConnState::Starting) => "Starting...".into(),
+            (Language::En, ConnState::Stopped) => "Stopped".into(),
+            (Language::En, ConnState::SwitchingMode) => "Enabling 200 Hz telemetry mode (2DC8:600A)...".into(),
+            (Language::En, ConnState::WaitingForController) => "Dongle idle — turn on controller or press a button".into(),
+            (Language::En, ConnState::DongleNotFound) => "Plug in the 8BitDo Pro 3 2.4 GHz dongle".into(),
+            (Language::En, ConnState::Calibrating) => "Calibrating gyroscope (keep controller still 0.4s)...".into(),
+            (Language::En, ConnState::Connected) => "Connected (2.4 GHz · 200 Hz)".into(),
+            (Language::En, ConnState::HidError(e)) => format!("HIDAPI error: {e}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BridgeStatus {
     pub running: bool,
-    pub state_text: String,
+    pub conn_state: ConnState,
     pub connected: bool,
     pub rate_hz: f32,
     pub battery: u8,
     pub dsu_clients: usize,
     pub dsu_error: Option<String>,
-    pub vigem_status: String,
+    pub vigem_mode_active: Option<PadMode>,
+    pub vigem_error: Option<String>,
     pub vigem_ok: bool,
     pub gyro_bias: [f32; 3],
     pub gyro_pc_active: bool,
@@ -32,13 +69,14 @@ impl Default for BridgeStatus {
     fn default() -> Self {
         Self {
             running: true,
-            state_text: "Iniciando...".into(),
+            conn_state: ConnState::Starting,
             connected: false,
             rate_hz: 0.0,
             battery: 0,
             dsu_clients: 0,
             dsu_error: None,
-            vigem_status: "Conectando ViGEmBus...".into(),
+            vigem_mode_active: None,
+            vigem_error: None,
             vigem_ok: false,
             gyro_bias: [0.0; 3],
             gyro_pc_active: false,
@@ -102,7 +140,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
         Ok(a) => a,
         Err(e) => {
             if let Ok(mut s) = ctrl.status.lock() {
-                s.state_text = format!("Error HIDAPI: {e}");
+                s.conn_state = ConnState::HidError(e.to_string());
             }
             return;
         }
@@ -130,9 +168,10 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                 s.running = false;
                 s.connected = false;
                 s.rate_hz = 0.0;
-                s.state_text = "Detenido".into();
+                s.conn_state = ConnState::Stopped;
                 s.vigem_ok = false;
-                s.vigem_status = "Inactivo".into();
+                s.vigem_mode_active = None;
+                s.vigem_error = None;
             }
             thread::sleep(Duration::from_millis(100));
             continue;
@@ -154,7 +193,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                     }
                     Err(e) => {
                         if let Ok(mut s) = ctrl.status.lock() {
-                            s.dsu_error = Some(format!("Puerto {} ocupado ({e})", cfg_snap.dsu_port));
+                            s.dsu_error = Some(format!(":{} ({e})", cfg_snap.dsu_port));
                         }
                     }
                 }
@@ -179,7 +218,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                 if let Ok(mut s) = ctrl.status.lock() {
                     s.running = true;
                     s.connected = false;
-                    s.state_text = "Activando modo telemetría 200 Hz (2DC8:600A)...".into();
+                    s.conn_state = ConnState::SwitchingMode;
                 }
                 thread::sleep(Duration::from_millis(150));
                 continue;
@@ -188,7 +227,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                 if let Ok(mut s) = ctrl.status.lock() {
                     s.running = true;
                     s.connected = false;
-                    s.state_text = "Dongle en espera — encendé el mando o tocá un botón".into();
+                    s.conn_state = ConnState::WaitingForController;
                 }
                 if let Some(srv) = dsu.as_mut() {
                     srv.connected = false;
@@ -201,7 +240,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                 if let Ok(mut s) = ctrl.status.lock() {
                     s.running = true;
                     s.connected = false;
-                    s.state_text = "Conectá el dongle 2.4 GHz del 8BitDo Pro 3".into();
+                    s.conn_state = ConnState::DongleNotFound;
                 }
                 if let Some(srv) = dsu.as_mut() {
                     srv.connected = false;
@@ -219,7 +258,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
 
         // Initial gyro calibration
         if let Ok(mut s) = ctrl.status.lock() {
-            s.state_text = "Calibrando giroscopio (dejá el mando quieto 0.4s)...".into();
+            s.conn_state = ConnState::Calibrating;
         }
         let (mut gyro_bias, _) = calibrate_gyro(&dev, Duration::from_millis(420));
 
@@ -227,7 +266,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
             s.running = true;
             s.connected = true;
             s.gyro_bias = gyro_bias;
-            s.state_text = "Conectado (2.4 GHz · 200 Hz)".into();
+            s.conn_state = ConnState::Connected;
         }
 
         // Hot 200 Hz event-driven loop
@@ -530,7 +569,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
                     s.rumble_l = sent_rumble.0;
                     s.rumble_r = sent_rumble.1;
                     s.telemetry = st;
-                    s.state_text = "Conectado (2.4 GHz · 200 Hz)".into();
+                    s.conn_state = ConnState::Connected;
                 }
             }
         }
@@ -556,7 +595,8 @@ fn ensure_vigem(
             *active_mode = Some(PadMode::None);
             if let Ok(mut s) = ctrl.status.lock() {
                 s.vigem_ok = false;
-                s.vigem_status = "Desactivado (Solo DSU)".into();
+                s.vigem_mode_active = Some(PadMode::None);
+                s.vigem_error = None;
             }
         }
         return;
@@ -577,18 +617,16 @@ fn ensure_vigem(
             *vigem = Some(vb);
             if let Ok(mut s) = ctrl.status.lock() {
                 s.vigem_ok = true;
-                s.vigem_status = match cfg.pad_mode {
-                    PadMode::Ds4NativeGyro => "DualShock 4 (Gyro Nativo Steam)".into(),
-                    PadMode::Xbox360 => "Xbox 360 (XInput)".into(),
-                    PadMode::None => "Desactivado".into(),
-                };
+                s.vigem_mode_active = Some(cfg.pad_mode);
+                s.vigem_error = None;
             }
         }
         Err(e) => {
             *retry_at = Instant::now() + Duration::from_secs(3);
             if let Ok(mut s) = ctrl.status.lock() {
                 s.vigem_ok = false;
-                s.vigem_status = e;
+                s.vigem_mode_active = None;
+                s.vigem_error = Some(e);
             }
         }
     }

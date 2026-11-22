@@ -4,60 +4,64 @@
   <img src="assets/8bitdo_pro3.svg" alt="8BitDo Pro 3 2.4 GHz Gyro Bridge" width="520"/>
 </p>
 
-Habilita el **giroscopio + acelerómetro a 200 Hz**, **vibración dual**, **gatillos analógicos** y **botones traseros (PL/PR)** del **8BitDo Pro 3** a través de su **dongle USB 2.4 GHz** en Windows — **sin modificar ni flashear firmware** (100% en RAM y reversible).
+<p align="center">
+  <b>English</b> | <a href="README_ES.md">Español</a>
+</p>
 
-## Características
+Unlock the **200 Hz 6-axis gyroscope + accelerometer**, **dual rumble**, **analog triggers**, and **independent back paddles (PL/PR)** on your **8BitDo Pro 3** over its stock **2.4 GHz USB dongle** on Windows — **zero firmware flashing** (100% RAM-only and reversible).
 
-- **Steam Input con Giroscopio Nativo:** emula un **DualShock 4** virtual vía ViGEmBus (`DS4_REPORT_EX`) con giroscopio 3 ejes + acelerómetro 3 ejes reales a **200 Hz** (aparece el menú oficial de Giroscopio, calibración, Flick Stick y perfiles por juego en Steam).
-- **Emuladores (DSU / Cemuhook UDP `127.0.0.1:26760`):** servidor integrado a 200 Hz compatible con **Cemu, Dolphin, Ryujinx, Yuzu / Eden / Sudachi, RPCS3 y Citra/Azahar**, en paralelo con el mando virtual.
-- **Vibración bidireccional:** reenvía la vibración de ambos motores desde Steam/PC y desde emuladores DSU hacia el dongle 2.4 GHz.
-- **Gatillos analógicos completos (`L2 / R2` `0..255`)** y todos los botones (sin el límite digital del modo Switch).
-- **Botones extra (`P1 / P2 / P3 / P4` — `L4 / R4 / PL / PR`):** monitor en vivo y remapeo a Touchpad Click, Recalibrar Gyro, Pausar Gyro, botones del mando o teclas del teclado (`Espacio`, `Shift`, `F12`, etc.).
-- **Modo Gyro directo para PC (opcional):** Gyro→Mouse (`SendInput`) y Gyro→Stick Derecho para juegos fuera de Steam o en modo Xbox 360.
-- **Interfaz nativa en Rust (`pro3-bridge.exe`):** lectura HID bloqueante por evento USB (~0.2 ms de overhead), calibración automática con detección de movimiento, auto-recuperación si el mando entra en reposo y configuración persistente (`pro3_bridge_config.json`).
+## Features
 
-## Cómo funciona (100% seguro y reversible)
+- **Native Steam Input Gyroscope:** Emulates a virtual **DualShock 4** via ViGEmBus (`DS4_REPORT_EX`) with real 3-axis gyro + 3-axis accelerometer at **200 Hz** — Steam's native Gyro menu, calibration, Flick Stick, Gyro-as-Mouse, and per-game profiles all work out of the box.
+- **Emulators (DSU / Cemuhook UDP `127.0.0.1:26760`):** Built-in 200 Hz motion + rumble server for **Cemu, Dolphin, Ryujinx, Yuzu / Eden / Sudachi, RPCS3, and Citra/Azahar**, running in parallel with the virtual controller.
+- **Bidirectional Dual Rumble:** Forwards left/right motor vibration from Steam/PC games and DSU emulators back to the 2.4 GHz dongle.
+- **Full Analog Triggers (`L2 / R2` `0..255`):** Keeps full analog trigger range unlike Switch mode.
+- **Back Paddles (`PL / PR`):** Live monitor and remapper to DS4 Touchpad Click, Recalibrate Gyro, Pause Gyro, gamepad buttons, or keyboard keys (`Space`, `Shift`, `F12`, etc.).
+- **Optional Direct PC Gyro Modes:** Built-in 200 Hz Gyro→Mouse (`SendInput`) and Gyro→Right Stick for non-Steam games or Xbox 360 mode.
+- **Native Rust GUI (`pro3-bridge.exe`):** Live interactive 8BitDo Pro 3 controller visualizer, 200 Hz artificial horizon gauge, event-driven USB HID reads (~0.2 ms overhead), Windows System Tray support with first-time close confirmation, bilingual **EN / ES** interface, and persistent config (`pro3_bridge_config.json`).
 
-El firmware oficial del dongle 2.4 GHz (JieLi AC695x) incluye un modo de telemetría en RAM (`2DC8:600A`) activable enviando el comando HID vendor `[0x81, 0x06, 0x08, 0x00]` por `Usage Page 0xFF7A`:
-- No modifica flash ni firmware del dongle ni del mando.
-- Emite paquetes `Report ID 0x02` a ~200 Hz con botones (32 bits), sticks, gatillos analógicos, acelerómetro (`4096 LSB/g`), giroscopio (`±2000 °/s`) y batería.
-- Acepta vibración por `Report ID 0x81` (`CUSTOM_CMD 0x08`).
-- Para volver el dongle al modo XInput de fábrica (`2DC8:310B`), simplemente cerrá la app y **desenchufá / volvé a enchufar el dongle**.
+## How It Works (Safe & 100% Reversible)
 
-## Requisitos
+The stock 2.4 GHz dongle firmware (JieLi AC695x) includes an in-RAM telemetry mode (`2DC8:600A`) activated via HID vendor command `[0x81, 0x06, 0x08, 0x00]` on `Usage Page 0xFF7A`:
+- Does **not** modify flash or firmware on the dongle or controller.
+- Streams `Report ID 0x02` at ~200 Hz containing buttons (32-bit), analog sticks, analog triggers, accelerometer (`4096 LSB/g`), gyroscope (`±2000 °/s`), and battery %.
+- Accepts dual-motor rumble via `Report ID 0x81` (`CUSTOM_CMD 0x08`).
+- To restore stock XInput mode (`2DC8:310B`), simply exit the app and **unplug & replug the USB dongle**.
+
+## Requirements
 
 - **Windows 10 / 11 (64-bit)**
-- Driver firmado **[ViGEmBus](https://github.com/nefarius/ViGEmBus/releases)** (para el mando virtual DualShock 4 / Xbox 360 en Steam; opcional si solo usás DSU en Dolphin/Cemu).
+- Signed **[ViGEmBus](https://github.com/nefarius/ViGEmBus/releases)** driver (for virtual DualShock 4 / Xbox 360 in Steam; optional if you only use DSU in Dolphin/Cemu).
 
-## Compilar el `.exe` en Rust
+## Build from Source (Rust)
 
 ```powershell
 cd pro3-bridge
 cargo build --release
 ```
 
-El ejecutable queda en `pro3-bridge/target/release/pro3-bridge.exe` (sin dependencias externas ni DLLs).
+Output binary: `pro3-bridge/target/release/pro3-bridge.exe` (single standalone `.exe`, zero external DLLs).
 
-## Uso rápido
+## Quick Setup
 
-### Steam (Giroscopio nativo)
-1. Abrí `pro3-bridge.exe` (o `Iniciar_Steam_DS4_GyroNativo.bat` si usás la versión Python).
-2. En **Steam → Parámetros → Mando**, activá **Steam Input para mandos de PlayStation**.
-3. Steam detectará el **DualShock 4** con su opción nativa de **Giroscopio** y **Vibración**.
+### Steam (Native Gyro)
+1. Launch `pro3-bridge.exe` (default mode: **DualShock 4 — Native Steam Gyro**).
+2. In **Steam → Settings → Controller**, enable **Steam Input for PlayStation controllers**.
+3. Steam will detect a **DualShock 4** with native **Gyroscope** calibration, aiming, and **Rumble**.
 
-### Emuladores (DSU / Cemuhook)
-Con la app abierta (servidor UDP activo en `127.0.0.1:26760`):
-- **Dolphin:** *Mandos → Fuentes de entrada alternativas → Habilitar → Añadir* `127.0.0.1:26760`.
-- **Cemu:** *Opciones → Entrada → API: DSUController* o *Motion Source → 127.0.0.1:26760*.
-- **Ryujinx / Yuzu / Eden:** *Controles → Movimiento → CemuHookUDP →* `127.0.0.1:26760`.
+### Emulators (DSU / Cemuhook)
+With `pro3-bridge.exe` running (UDP server active on `127.0.0.1:26760`):
+- **Dolphin:** *Controllers → Alternate Input Sources → Enable → Add* `127.0.0.1:26760`.
+- **Cemu:** *Options → Input Settings → API: DSUController* or *Motion Source → 127.0.0.1:26760*.
+- **Ryujinx / Yuzu / Eden:** *Controls → Motion → Use CemuHookUDP →* `127.0.0.1:26760`.
 
-### Versión Python incluida
-También se incluye la implementación de referencia en Python (`pro3_bridge.py` + `pro3_24g_gyro.py` y lanzadores `.bat`):
+### Python Reference Implementation
+A standalone Python implementation (`pro3_bridge.py` + `pro3_24g_gyro.py` and `.bat` launchers) is also included:
 ```powershell
 pip install hidapi vgamepad
 python pro3_bridge.py
 ```
 
-## Licencia
+## License
 
 [MIT](LICENSE)

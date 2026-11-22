@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Language {
+    Es,
+    En,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CloseAction {
+    Ask,
+    MinimizeToTray,
+    Exit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PadMode {
     Ds4NativeGyro,
     Xbox360,
@@ -79,36 +92,57 @@ impl PaddleAction {
         PaddleAction::KeyF12,
     ];
 
-    pub fn label(self) -> &'static str {
-        match self {
-            PaddleAction::None => "Sin asignar",
-            PaddleAction::TouchpadClick => "DS4 Touchpad Click",
-            PaddleAction::RecalibrateGyro => "Recalibrar Giroscopio",
-            PaddleAction::PauseGyro => "Pausar Giroscopio (mantener)",
-            PaddleAction::PadL3 => "Mando: L3 (Click Stick Izq)",
-            PaddleAction::PadR3 => "Mando: R3 (Click Stick Der)",
-            PaddleAction::PadSouth => "Mando: A / Cruz",
-            PaddleAction::PadEast => "Mando: B / Círculo",
-            PaddleAction::PadWest => "Mando: X / Cuadrado",
-            PaddleAction::PadNorth => "Mando: Y / Triángulo",
-            PaddleAction::PadL1 => "Mando: L1 / LB",
-            PaddleAction::PadR1 => "Mando: R1 / RB",
-            PaddleAction::KeySpace => "Tecla: Espacio",
-            PaddleAction::KeyShift => "Tecla: Shift Izq",
-            PaddleAction::KeyCtrl => "Tecla: Ctrl Izq",
-            PaddleAction::KeyE => "Tecla: E",
-            PaddleAction::KeyR => "Tecla: R",
-            PaddleAction::KeyF => "Tecla: F",
-            PaddleAction::KeyTab => "Tecla: Tab",
-            PaddleAction::KeyF12 => "Tecla: F12 (Captura Steam)",
+    pub fn label(self, lang: Language) -> &'static str {
+        match (lang, self) {
+            (Language::Es, PaddleAction::None) => "Sin asignar",
+            (Language::Es, PaddleAction::TouchpadClick) => "DS4 Touchpad Click",
+            (Language::Es, PaddleAction::RecalibrateGyro) => "Recalibrar Giroscopio",
+            (Language::Es, PaddleAction::PauseGyro) => "Pausar Giroscopio (mantener)",
+            (Language::Es, PaddleAction::PadL3) => "Mando: L3 (Click Stick Izq)",
+            (Language::Es, PaddleAction::PadR3) => "Mando: R3 (Click Stick Der)",
+            (Language::Es, PaddleAction::PadSouth) => "Mando: A / Cruz",
+            (Language::Es, PaddleAction::PadEast) => "Mando: B / Círculo",
+            (Language::Es, PaddleAction::PadWest) => "Mando: X / Cuadrado",
+            (Language::Es, PaddleAction::PadNorth) => "Mando: Y / Triángulo",
+            (Language::Es, PaddleAction::PadL1) => "Mando: L1 / LB",
+            (Language::Es, PaddleAction::PadR1) => "Mando: R1 / RB",
+            (Language::Es, PaddleAction::KeySpace) => "Tecla: Espacio",
+            (Language::Es, PaddleAction::KeyShift) => "Tecla: Shift Izq",
+            (Language::Es, PaddleAction::KeyCtrl) => "Tecla: Ctrl Izq",
+            (Language::Es, PaddleAction::KeyE) => "Tecla: E",
+            (Language::Es, PaddleAction::KeyR) => "Tecla: R",
+            (Language::Es, PaddleAction::KeyF) => "Tecla: F",
+            (Language::Es, PaddleAction::KeyTab) => "Tecla: Tab",
+            (Language::Es, PaddleAction::KeyF12) => "Tecla: F12 (Captura Steam)",
+
+            (Language::En, PaddleAction::None) => "Unassigned",
+            (Language::En, PaddleAction::TouchpadClick) => "DS4 Touchpad Click",
+            (Language::En, PaddleAction::RecalibrateGyro) => "Recalibrate Gyroscope",
+            (Language::En, PaddleAction::PauseGyro) => "Pause Gyroscope (hold)",
+            (Language::En, PaddleAction::PadL3) => "Pad: L3 (Left Stick Click)",
+            (Language::En, PaddleAction::PadR3) => "Pad: R3 (Right Stick Click)",
+            (Language::En, PaddleAction::PadSouth) => "Pad: A / Cross",
+            (Language::En, PaddleAction::PadEast) => "Pad: B / Circle",
+            (Language::En, PaddleAction::PadWest) => "Pad: X / Square",
+            (Language::En, PaddleAction::PadNorth) => "Pad: Y / Triangle",
+            (Language::En, PaddleAction::PadL1) => "Pad: L1 / LB",
+            (Language::En, PaddleAction::PadR1) => "Pad: R1 / RB",
+            (Language::En, PaddleAction::KeySpace) => "Key: Space",
+            (Language::En, PaddleAction::KeyShift) => "Key: Left Shift",
+            (Language::En, PaddleAction::KeyCtrl) => "Key: Left Ctrl",
+            (Language::En, PaddleAction::KeyE) => "Key: E",
+            (Language::En, PaddleAction::KeyR) => "Key: R",
+            (Language::En, PaddleAction::KeyF) => "Key: F",
+            (Language::En, PaddleAction::KeyTab) => "Key: Tab",
+            (Language::En, PaddleAction::KeyF12) => "Key: F12 (Steam Screenshot)",
         }
     }
 
     pub fn virtual_key(self) -> Option<u16> {
         match self {
             PaddleAction::KeySpace => Some(0x20),
-            PaddleAction::KeyShift => Some(0xA0), // VK_LSHIFT
-            PaddleAction::KeyCtrl => Some(0xA2),  // VK_LCONTROL
+            PaddleAction::KeyShift => Some(0xA0),
+            PaddleAction::KeyCtrl => Some(0xA2),
             PaddleAction::KeyE => Some(0x45),
             PaddleAction::KeyR => Some(0x52),
             PaddleAction::KeyF => Some(0x46),
@@ -119,8 +153,21 @@ impl PaddleAction {
     }
 }
 
+fn default_lang() -> Language {
+    Language::Es
+}
+
+fn default_close_action() -> CloseAction {
+    CloseAction::Ask
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BridgeConfig {
+    #[serde(default = "default_lang")]
+    pub lang: Language,
+    #[serde(default = "default_close_action")]
+    pub close_action: CloseAction,
+
     pub pad_mode: PadMode,
     pub layout: ButtonLayout,
     pub dsu_enabled: bool,
@@ -136,7 +183,7 @@ pub struct BridgeConfig {
     pub invert_x: bool,
     pub invert_y: bool,
 
-    // Extra buttons (P1=bit25, P2=bit26, P3=bit21, P4=bit30)
+    // Extra buttons (P1=bit25 PL, P2=bit26 PR, P3=bit21, P4=bit30)
     pub paddle_p1: PaddleAction,
     pub paddle_p2: PaddleAction,
     pub paddle_p3: PaddleAction,
@@ -146,6 +193,8 @@ pub struct BridgeConfig {
 impl Default for BridgeConfig {
     fn default() -> Self {
         Self {
+            lang: Language::Es,
+            close_action: CloseAction::Ask,
             pad_mode: PadMode::Ds4NativeGyro,
             layout: ButtonLayout::XboxPs,
             dsu_enabled: true,

@@ -12,6 +12,8 @@ vigem-rust = "0.2.1"
 crc32fast = "1.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+resvg = "0.50"
+tray-icon = { version = "0.26", default-features = false }
 windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.release]
