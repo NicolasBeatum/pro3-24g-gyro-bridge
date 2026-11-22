@@ -1,219 +1,142 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 430" width="640" height="430">
-  <defs>
-    <!-- Main Indigo Purple body gradients (8BitDo Pro 3 GameCube Edition) -->
-    <linearGradient id="bodyBase" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#5859ad"/>
-      <stop offset="45%" stop-color="#454694"/>
-      <stop offset="100%" stop-color="#2c2d6e"/>
-    </linearGradient>
-    <linearGradient id="facePlate" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#6163b8"/>
-      <stop offset="55%" stop-color="#4e50a2"/>
-      <stop offset="100%" stop-color="#3c3d85"/>
-    </linearGradient>
-    <linearGradient id="gripLeft" x1="0" y1="0" x2="1" y2="0.4">
-      <stop offset="0%" stop-color="#3a3b82"/>
-      <stop offset="45%" stop-color="#4a4b9a"/>
-      <stop offset="100%" stop-color="#292a66"/>
-    </linearGradient>
-    <linearGradient id="gripRight" x1="1" y1="0" x2="0" y2="0.4">
-      <stop offset="0%" stop-color="#3a3b82"/>
-      <stop offset="45%" stop-color="#4a4b9a"/>
-      <stop offset="100%" stop-color="#292a66"/>
-    </linearGradient>
-    <linearGradient id="silverBtn" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#f2f4f8"/>
-      <stop offset="60%" stop-color="#cfd5df"/>
-      <stop offset="100%" stop-color="#a5aebd"/>
-    </linearGradient>
-    <linearGradient id="stickCap" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#eaedf3"/>
-      <stop offset="100%" stop-color="#bac1ce"/>
-    </linearGradient>
-    <linearGradient id="stickDish" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#c3c9d5"/>
-      <stop offset="100%" stop-color="#e3e7ef"/>
-    </linearGradient>
-    <linearGradient id="greenA" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#5cf2be"/>
-      <stop offset="55%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#199e70"/>
-    </linearGradient>
-    <linearGradient id="redB" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ff6b5e"/>
-      <stop offset="55%" stop-color="#e9463b"/>
-      <stop offset="100%" stop-color="#b82920"/>
-    </linearGradient>
-    <linearGradient id="collarRing" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#5d5fb5"/>
-      <stop offset="100%" stop-color="#292a64"/>
-    </linearGradient>
-    <filter id="dropShadow" x="-15%" y="-15%" width="130%" height="135%">
-      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0a0b1a" flood-opacity="0.45"/>
-    </filter>
-    <filter id="btnShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#121333" flood-opacity="0.5"/>
-    </filter>
-  </defs>
+  <!--
+    8BitDo Pro 3 — minimalist outline schematic.
+    Transparent background, stroke-only line art. Rendered by resvg in pro3-bridge/src/ui.rs.
+    Coordinate contract (do not move): D-Pad (152,164); ABXY X(488,124) Y(440,164) A(536,164) B(488,204);
+    select (290,158); start (350,158); Star (152,242); Home (488,242); sticks (234,240) / (406,240);
+    LEDs y=213 at x=308/320/332; profile pill (320,233); L1/R1 y 58..92; L4/R4 y 56..70.
+  -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
 
-  <g filter="url(#dropShadow)">
-    <!-- L1 / R1 Curved Silver Bumpers -->
-    <path d="M 74 96 C 98 66 154 56 206 58 L 204 74 C 154 72 106 82 82 108 Z"
-          fill="url(#silverBtn)" stroke="#9da6b5" stroke-width="1.2"/>
-    <path d="M 566 96 C 542 66 486 56 434 58 L 436 74 C 486 72 534 82 558 108 Z"
-          fill="url(#silverBtn)" stroke="#9da6b5" stroke-width="1.2"/>
+    <!-- ===== Shell ===== -->
+    <!-- Outer silhouette (2.2) -->
+    <path d="M 320 80 L 170 80
+             C 112 82 72 104 60 150
+             C 50 190 50 240 62 290
+             C 74 340 92 378 126 390
+             C 158 400 190 388 208 362
+             C 226 336 244 308 268 296
+             C 288 287 304 285 320 285
+             C 336 285 352 287 372 296
+             C 396 308 414 336 432 362
+             C 450 388 482 400 514 390
+             C 548 378 566 340 578 290
+             C 590 240 590 190 580 150
+             C 568 104 528 82 470 80 Z"
+          fill="#94A3B8" fill-opacity="0.05" stroke="#94A3B8" stroke-width="2.2"/>
 
-    <!-- L4 / R4 Small Silver Inner Shoulder Buttons -->
-    <rect x="216" y="56" width="32" height="14" rx="5" fill="url(#silverBtn)" stroke="#9da6b5" stroke-width="1"/>
-    <rect x="392" y="56" width="32" height="14" rx="5" fill="url(#silverBtn)" stroke="#9da6b5" stroke-width="1"/>
+    <!-- Recessed faceplate groove (1.5) -->
+    <path d="M 320 94 L 172 94
+             C 124 96 90 114 78 154
+             C 68 190 68 238 79 284
+             C 90 326 104 358 128 370
+             C 152 380 176 370 192 350
+             C 212 324 232 298 262 283
+             C 286 272 304 271 320 271
+             C 336 271 354 272 378 283
+             C 408 298 428 324 448 350
+             C 464 370 488 380 512 370
+             C 536 358 550 326 561 284
+             C 572 238 572 190 562 154
+             C 550 114 516 96 468 94 Z"
+          stroke="#64748B" stroke-width="1.5" stroke-opacity="0.75"/>
 
-    <!-- Main Controller Silhouette (NO dock base: clean arched underside + ergonomic handles) -->
-    <path d="
-      M 164 68
-      L 476 68
-      C 554 68 598 118 606 186
-      C 614 252 612 318 588 364
-      C 568 400 524 410 486 392
-      C 456 378 440 340 426 304
-      C 414 276 398 266 376 266
-      L 264 266
-      C 242 266 226 276 214 304
-      C 200 340 184 378 154 392
-      C 116 410 72 400 52 364
-      C 28 318 26 252 34 186
-      C 42 118 86 68 164 68 Z"
-      fill="url(#bodyBase)" stroke="#26275e" stroke-width="2.5"/>
+    <!-- Top USB-C port -->
+    <rect x="304" y="84" width="32" height="5" rx="2.5" stroke="#64748B" stroke-width="1.1" stroke-opacity="0.8"/>
 
-    <!-- Soft subtle specular rim along outer grips -->
-    <path d="M 46 218 C 38 274 42 330 62 362 C 80 390 116 396 146 382"
-          fill="none" stroke="#7274c9" stroke-width="2" stroke-linecap="round" opacity="0.32"/>
-    <path d="M 594 218 C 602 274 598 330 578 362 C 560 390 524 396 494 382"
-          fill="none" stroke="#7274c9" stroke-width="2" stroke-linecap="round" opacity="0.32"/>
+    <!-- ===== Shoulders ===== -->
+    <!-- L1 bumper -->
+    <path d="M 76 94 C 96 68 146 58 200 58 Q 206 58 206 64 L 206 72 Q 206 76 200 76
+             C 156 76 116 82 92 94 Q 82 99 76 94 Z"
+          stroke="#94A3B8" stroke-width="1.5"/>
+    <!-- R1 bumper -->
+    <path d="M 564 94 C 544 68 494 58 440 58 Q 434 58 434 64 L 434 72 Q 434 76 440 76
+             C 484 76 524 82 548 94 Q 558 99 564 94 Z"
+          stroke="#94A3B8" stroke-width="1.5"/>
+    <!-- L4 / R4 inner shoulder buttons -->
+    <rect x="216" y="56" width="32" height="14" rx="7" stroke="#94A3B8" stroke-width="1.3"/>
+    <rect x="392" y="56" width="32" height="14" rx="7" stroke="#94A3B8" stroke-width="1.3"/>
 
-    <!-- Recessed Upper Faceplate (stadium capsule + bevel groove, exact Pro 3 look) -->
-    <path d="
-      M 168 78
-      L 472 78
-      C 538 78 584 122 584 178
-      C 584 234 538 274 472 274
-      L 432 274
-      C 424 274 416 270 408 264
-      L 232 264
-      C 224 270 216 274 208 274
-      L 168 274
-      C 102 274 56 234 56 178
-      C 56 122 102 78 168 78 Z"
-      fill="url(#facePlate)" stroke="#323375" stroke-width="2.2"/>
-    <!-- Inner subtle top bevel rim -->
-    <path d="
-      M 168 81
-      L 472 81
-      C 535 81 580 123 580 178
-      C 580 231 535 271 472 271
-      L 432 271
-      L 208 271
-      L 168 271
-      C 105 271 60 231 60 178
-      C 60 123 105 81 168 81 Z"
-      fill="none" stroke="#787ad1" stroke-width="1.2" opacity="0.45"/>
+    <!-- ===== Branding ===== -->
+    <text x="320" y="122" fill="#64748B" stroke="none" font-family="Segoe UI, Arial, sans-serif"
+          font-size="11" font-weight="600" letter-spacing="2" text-anchor="middle">8BITDO</text>
 
-    <!-- Brand header: 8BitDo | Pro 3 + underline -->
-    <text x="285" y="121" fill="#e2e5f8" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="800" text-anchor="middle" letter-spacing="0.4">8BitDo</text>
-    <text x="357" y="121" fill="#d0d4f0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="500" text-anchor="middle" letter-spacing="0.3">Pro 3</text>
-    <line x1="264" y1="130" x2="376" y2="130" stroke="#9ea2e0" stroke-width="1.3" opacity="0.7"/>
-
-    <!-- Shared Recessed Trough for -select and +start -->
-    <rect x="256" y="142" width="128" height="32" rx="16" fill="#323374" stroke="#6c6ec4" stroke-width="1.2"/>
-    <rect x="261" y="147" width="118" height="22" rx="11" fill="#292a63"/>
-    <!-- - select pill button -->
-    <rect x="268" y="151" width="44" height="14" rx="7" fill="url(#silverBtn)" stroke="#8e96a8" stroke-width="1" filter="url(#btnShadow)"/>
-    <!-- + start pill button -->
-    <rect x="328" y="151" width="44" height="14" rx="7" fill="url(#silverBtn)" stroke="#8e96a8" stroke-width="1" filter="url(#btnShadow)"/>
-    <text x="290" y="191" fill="#cfd3f2" font-family="Segoe UI, sans-serif" font-size="10.5" font-weight="600" text-anchor="middle">- select</text>
-    <text x="350" y="191" fill="#cfd3f2" font-family="Segoe UI, sans-serif" font-size="10.5" font-weight="600" text-anchor="middle">+ start</text>
-
-    <!-- 3 Profile LED dots + Center Profile Button -->
-    <circle cx="308" cy="213" r="2.2" fill="#8b90cf"/>
-    <circle cx="320" cy="213" r="2.2" fill="#8b90cf" opacity="0.65"/>
-    <circle cx="332" cy="213" r="2.2" fill="#8b90cf" opacity="0.65"/>
-    <rect x="307" y="226" width="26" height="14" rx="7" fill="#3d3e88" stroke="#242559" stroke-width="1.6"/>
-    <rect x="309" y="228" width="22" height="10" rx="5" fill="#4f51a3"/>
-
-    <!-- Classic Silver Cross D-Pad (Left) -->
-    <g filter="url(#btnShadow)">
-      <!-- Recessed cross well -->
-      <path d="M 134 114 H 170 V 146 H 202 V 182 H 170 V 214 H 134 V 182 H 102 V 146 H 134 Z"
-            fill="#2b2c66" stroke="#6c6ec4" stroke-width="1.2" stroke-linejoin="round"/>
-      <!-- Raised silver cross -->
-      <path d="M 137 118 H 167 V 149 H 198 V 179 H 167 V 210 H 137 V 179 H 106 V 149 H 137 Z"
-            fill="url(#silverBtn)" stroke="#9ca4b4" stroke-width="1.2" stroke-linejoin="round"/>
-      <!-- Directional engraved triangles -->
-      <polygon points="152,124 144,138 160,138" fill="#b7bfcd"/>
-      <polygon points="152,204 144,190 160,190" fill="#b7bfcd"/>
-      <polygon points="112,164 126,156 126,172" fill="#b7bfcd"/>
-      <polygon points="192,164 178,156 178,172" fill="#b7bfcd"/>
-      <!-- Center dimple -->
-      <circle cx="152" cy="164" r="10" fill="url(#stickDish)" stroke="#c2c8d4" stroke-width="0.8"/>
+    <!-- ===== D-Pad ===== -->
+    <circle cx="152" cy="164" r="58" stroke="#64748B" stroke-width="1.1" stroke-opacity="0.55"/>
+    <path d="M 141 118 L 163 118 Q 167 118 167 122 L 167 149 L 194 149 Q 198 149 198 153
+             L 198 175 Q 198 179 194 179 L 167 179 L 167 206 Q 167 210 163 210
+             L 141 210 Q 137 210 137 206 L 137 179 L 110 179 Q 106 179 106 175
+             L 106 153 Q 106 149 110 149 L 137 149 L 137 122 Q 137 118 141 118 Z"
+          stroke="#94A3B8" stroke-width="1.3"/>
+    <circle cx="152" cy="164" r="7" stroke="#64748B" stroke-width="1"/>
+    <g fill="#94A3B8" fill-opacity="0.7" stroke="none">
+      <polygon points="152,124 147.5,131 156.5,131"/>
+      <polygon points="152,204 147.5,197 156.5,197"/>
+      <polygon points="112,164 119,159.5 119,168.5"/>
+      <polygon points="192,164 185,159.5 185,168.5"/>
     </g>
 
-    <!-- GameCube-colored ABXY Face Buttons (Right) -->
-    <g filter="url(#btnShadow)" font-family="Segoe UI, sans-serif" font-size="16" font-weight="700" text-anchor="middle">
-      <!-- X (Top - Silver) -->
-      <circle cx="488" cy="124" r="22" fill="#2b2c66"/>
-      <circle cx="488" cy="124" r="19.5" fill="url(#silverBtn)" stroke="#9ca4b4" stroke-width="1.2"/>
-      <text x="488" y="130" fill="#ffffff">X</text>
-
-      <!-- Y (Left - Silver) -->
-      <circle cx="440" cy="164" r="22" fill="#2b2c66"/>
-      <circle cx="440" cy="164" r="19.5" fill="url(#silverBtn)" stroke="#9ca4b4" stroke-width="1.2"/>
-      <text x="440" y="170" fill="#ffffff">Y</text>
-
-      <!-- A (Right - Mint Emerald Green) -->
-      <circle cx="536" cy="164" r="22" fill="#2b2c66"/>
-      <circle cx="536" cy="164" r="19.5" fill="url(#greenA)" stroke="#16855e" stroke-width="1.2"/>
-      <text x="536" y="170" fill="#eafff6">A</text>
-
-      <!-- B (Bottom - Coral Red) -->
-      <circle cx="488" cy="204" r="22" fill="#2b2c66"/>
-      <circle cx="488" cy="204" r="19.5" fill="url(#redB)" stroke="#992019" stroke-width="1.2"/>
-      <text x="488" y="210" fill="#fff1ef">B</text>
+    <!-- ===== ABXY ===== -->
+    <circle cx="488" cy="164" r="62" stroke="#64748B" stroke-width="1.1" stroke-opacity="0.55"/>
+    <g stroke="#94A3B8" stroke-width="1.3">
+      <circle cx="488" cy="124" r="19.5"/>
+      <circle cx="440" cy="164" r="19.5"/>
+      <circle cx="536" cy="164" r="19.5"/>
+      <circle cx="488" cy="204" r="19.5"/>
+    </g>
+    <g fill="#A3B0C2" stroke="none" font-family="Segoe UI, Arial, sans-serif" font-size="15"
+       font-weight="600" text-anchor="middle">
+      <text x="488" y="129.5">X</text>
+      <text x="440" y="169.5">Y</text>
+      <text x="536" y="169.5">A</text>
+      <text x="488" y="209.5">B</text>
     </g>
 
-    <!-- Lower-Left Star Button -->
+    <!-- ===== Center: select / start trough ===== -->
+    <rect x="258" y="143" width="124" height="30" rx="15" stroke="#64748B" stroke-width="1.5" stroke-opacity="0.85"/>
+    <rect x="268" y="151" width="44" height="14" rx="7" stroke="#94A3B8" stroke-width="1.3"/>
+    <rect x="328" y="151" width="44" height="14" rx="7" stroke="#94A3B8" stroke-width="1.3"/>
+    <g stroke="#94A3B8" stroke-width="1.2">
+      <line x1="286.5" y1="158" x2="293.5" y2="158"/>
+      <line x1="346.5" y1="158" x2="353.5" y2="158"/>
+      <line x1="350" y1="154.5" x2="350" y2="161.5"/>
+    </g>
+    <g fill="#64748B" stroke="none" font-family="Segoe UI, Arial, sans-serif" font-size="8"
+       font-weight="600" letter-spacing="1" text-anchor="middle">
+      <text x="290" y="186">SELECT</text>
+      <text x="350" y="186">START</text>
+    </g>
+
+    <!-- LEDs + profile pill -->
+    <g fill="#94A3B8" fill-opacity="0.55" stroke="none">
+      <circle cx="308" cy="213" r="2.6"/>
+      <circle cx="320" cy="213" r="2.6"/>
+      <circle cx="332" cy="213" r="2.6"/>
+    </g>
+    <rect x="309" y="227" width="22" height="12" rx="6" stroke="#94A3B8" stroke-width="1.3"/>
+
+    <!-- ===== Star / Home ===== -->
+    <circle cx="152" cy="242" r="12.5" stroke="#94A3B8" stroke-width="1.3"/>
+    <polygon points="152,235.5 153.59,239.82 158.18,239.99 154.57,242.83 155.82,247.26 152,244.7 148.18,247.26 149.43,242.83 145.82,239.99 150.41,239.82"
+             stroke="#94A3B8" stroke-width="1"/>
+    <circle cx="488" cy="242" r="13" stroke="#94A3B8" stroke-width="1.3"/>
+    <path d="M 482.5 242.5 L 488 237.5 L 493.5 242.5 M 484.5 241 L 484.5 247 L 491.5 247 L 491.5 241"
+          stroke="#94A3B8" stroke-width="1.2"/>
+
+    <!-- ===== Analog sticks ===== -->
     <g>
-      <circle cx="152" cy="242" r="14.5" fill="#323374" stroke="#6d6fc5" stroke-width="1"/>
-      <circle cx="152" cy="242" r="11.5" fill="#464896" stroke="#282961" stroke-width="1.2"/>
-      <text x="152" y="247" fill="#282961" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">★</text>
+      <circle cx="234" cy="240" r="45" stroke="#94A3B8" stroke-width="1.5"/>
+      <circle cx="234" cy="240" r="36" stroke="#64748B" stroke-width="1.1" stroke-opacity="0.8"/>
+      <circle cx="234" cy="240" r="27" fill="#94A3B8" fill-opacity="0.06" stroke="#CBD5E1" stroke-width="1.5"/>
+      <circle cx="234" cy="240" r="19" stroke="#64748B" stroke-width="1" stroke-opacity="0.7"/>
+      <circle cx="234" cy="240" r="11" stroke="#64748B" stroke-width="0.9" stroke-opacity="0.5"/>
     </g>
-
-    <!-- Lower-Right Home (8BitDo) Button -->
     <g>
-      <circle cx="488" cy="242" r="15.5" fill="#2d2e6a" stroke="#7577ce" stroke-width="1.1"/>
-      <circle cx="488" cy="242" r="12" fill="#4a4ca0" stroke="#232458" stroke-width="1.2"/>
-      <!-- Tiny 8BitDo pixel emblem -->
-      <rect x="483" y="238" width="4" height="4" rx="0.6" fill="#2b2d68"/>
-      <rect x="489" y="238" width="4" height="4" rx="0.6" fill="#2b2d68"/>
-      <rect x="486" y="242" width="4" height="4" rx="0.6" fill="#2b2d68"/>
+      <circle cx="406" cy="240" r="45" stroke="#94A3B8" stroke-width="1.5"/>
+      <circle cx="406" cy="240" r="36" stroke="#64748B" stroke-width="1.1" stroke-opacity="0.8"/>
+      <circle cx="406" cy="240" r="27" fill="#94A3B8" fill-opacity="0.06" stroke="#CBD5E1" stroke-width="1.5"/>
+      <circle cx="406" cy="240" r="19" stroke="#64748B" stroke-width="1" stroke-opacity="0.7"/>
+      <circle cx="406" cy="240" r="11" stroke="#64748B" stroke-width="0.9" stroke-opacity="0.5"/>
     </g>
-
-    <!-- Symmetrical Dual Analog Sticks (exact Pro 3 protruding collars + silver concave caps) -->
-    <!-- Left Stick -->
-    <g>
-      <circle cx="234" cy="240" r="46" fill="url(#collarRing)" stroke="#24255c" stroke-width="2"/>
-      <circle cx="234" cy="240" r="37" fill="#232457" stroke="#6466bf" stroke-width="1.2"/>
-      <circle cx="234" cy="240" r="29" fill="url(#stickCap)" stroke="#9da6b5" stroke-width="1.5" filter="url(#btnShadow)"/>
-      <circle cx="234" cy="240" r="20.5" fill="url(#stickDish)" stroke="#b3bac7" stroke-width="1"/>
-    </g>
-
-    <!-- Right Stick -->
-    <g>
-      <circle cx="406" cy="240" r="46" fill="url(#collarRing)" stroke="#24255c" stroke-width="2"/>
-      <circle cx="406" cy="240" r="37" fill="#232457" stroke="#6466bf" stroke-width="1.2"/>
-      <circle cx="406" cy="240" r="29" fill="url(#stickCap)" stroke="#9da6b5" stroke-width="1.5" filter="url(#btnShadow)"/>
-      <circle cx="406" cy="240" r="20.5" fill="url(#stickDish)" stroke="#b3bac7" stroke-width="1"/>
-    </g>
-
-    <!-- Subtle engraved 8BitDo logo on lower center bridge -->
-    <text x="320" y="259" fill="#27285e" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="800" text-anchor="middle" opacity="0.75">8BitDo</text>
   </g>
 </svg>
