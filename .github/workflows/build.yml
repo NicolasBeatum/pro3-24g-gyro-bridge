@@ -1,0 +1,22 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build pro3-bridge.exe
+        working-directory: pro3-bridge
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pro3-bridge-windows-x64
+          path: pro3-bridge/target/release/pro3-bridge.exe

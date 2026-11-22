@@ -1,0 +1,26 @@
+# Reverse-engineering workspace & vendor firmware (NEVER commit)
+rea/
+
+# Rust build artifacts
+target/
+pro3-bridge/target/
+*.pdb
+
+# Python environments & caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# User runtime config & logs
+pro3_bridge_config.json
+*.log
+monitor_log.txt
+
+# Local temporary probe/debug scripts
+captura_usb.ps1
+monitor.py
+paso3_probar.ps1
+paso3_revertir.ps1
+reparar_dongle.ps1
+sniff.py
+switch_dongle_mode.py

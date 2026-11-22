@@ -1,0 +1,21 @@
+[package]
+name = "pro3-bridge"
+version = "1.0.0"
+edition = "2021"
+description = "8BitDo Pro 3 2.4 GHz 200 Hz Gyroscope, Rumble & DSU Bridge for Windows (Steam Native DS4 + Emulators)"
+license = "MIT"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow"] }
+hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
+vigem-rust = "0.2.1"
+crc32fast = "1.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
