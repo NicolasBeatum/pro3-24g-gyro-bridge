@@ -1,7 +1,11 @@
 use crate::bridge::{BridgeControl, BridgeStatus};
 use crate::config::*;
 use crate::protocol::*;
-use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Stroke, Vec2};
+use eframe::egui::{
+    self, Align, Align2, Color32, CornerRadius, CursorIcon, FontId, Layout, Painter, Pos2, Rect,
+    RichText, Sense, Shape, Stroke, StrokeKind, Vec2,
+};
+use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,13 +13,18 @@ use tray_icon::TrayIcon;
 
 pub const PRO3_SVG: &[u8] = include_bytes!("../../assets/8bitdo_pro3.svg");
 
-// Sleek obsidian / slate palette
-const BG_CANVAS: Color32 = Color32::from_rgb(11, 13, 19);
-const BG_HEADER: Color32 = Color32::from_rgb(16, 19, 28);
-const BG_CARD: Color32 = Color32::from_rgb(20, 24, 35);
-const BORDER_CARD: Color32 = Color32::from_rgb(38, 45, 64);
-const TEXT_PRIMARY: Color32 = Color32::from_rgb(236, 241, 250);
-const TEXT_MUTED: Color32 = Color32::from_rgb(142, 152, 174);
+// ── Design tokens ──────────────────────────────────────────────────────────
+// Deep matte canvas, soft cards, ultra-subtle 1px strokes.
+pub const BG_CANVAS: Color32 = Color32::from_rgb(12, 14, 20); // #0C0E14
+pub const BG_CARD: Color32 = Color32::from_rgb(19, 23, 34); // #131722
+pub const BG_INSET: Color32 = Color32::from_rgb(14, 17, 25);
+pub const BG_RAISED: Color32 = Color32::from_rgb(34, 41, 58);
+pub const BG_ELEVATED: Color32 = Color32::from_rgb(22, 26, 38);
+pub const STROKE: Color32 = Color32::from_rgb(34, 40, 56); // #222838
+pub const STROKE_STRONG: Color32 = Color32::from_rgb(50, 59, 82);
+const TEXT_PRIMARY: Color32 = Color32::from_rgb(232, 236, 244);
+const TEXT_SECONDARY: Color32 = Color32::from_rgb(160, 169, 188);
+const TEXT_MUTED: Color32 = Color32::from_rgb(104, 113, 134);
 const ACCENT_CYAN: Color32 = Color32::from_rgb(56, 189, 248);
 const ACCENT_GREEN: Color32 = Color32::from_rgb(52, 211, 153);
 const ACCENT_CORAL: Color32 = Color32::from_rgb(251, 113, 133);
@@ -27,6 +36,21 @@ enum Tab {
     Dashboard,
     Paddles,
     Advanced,
+}
+
+#[derive(Clone, Copy)]
+enum ModalChoice {
+    Tray,
+    Exit,
+    Cancel,
+}
+
+/// Bilingual string picker.
+fn t(lang: Language, es: &'static str, en: &'static str) -> &'static str {
+    match lang {
+        Language::Es => es,
+        Language::En => en,
+    }
 }
 
 pub struct Pro3App {
@@ -58,13 +82,6 @@ impl Pro3App {
             force_exit,
             show_close_modal: false,
             remember_close_choice: true,
-        }
-    }
-
-    fn tr(&self, es: &'static str, en: &'static str) -> &'static str {
-        match self.cfg.lang {
-            Language::Es => es,
-            Language::En => en,
         }
     }
 
@@ -125,103 +142,357 @@ impl Pro3App {
         if !self.show_close_modal {
             return;
         }
-        let title = self.tr("¿Qué querés hacer al cerrar?", "What would you like to do?");
-        egui::Window::new(title)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_width(440.0)
-            .max_width(440.0)
+        let l = self.cfg.lang;
+        let mut choice: Option<ModalChoice> = None;
+
+        let modal = egui::Modal::new(egui::Id::new("close_behavior_modal"))
+            .backdrop_color(Color32::from_black_alpha(160))
             .frame(
-                egui::Frame::window(&ctx.style())
-                    .fill(Color32::from_rgb(20, 24, 36))
-                    .stroke(Stroke::new(1.5, Color32::from_rgb(70, 96, 152)))
-                    .corner_radius(CornerRadius::same(12))
-                    .inner_margin(egui::Margin::same(18)),
+                egui::Frame::default()
+                    .fill(BG_ELEVATED)
+                    .stroke(Stroke::new(1.0, STROKE_STRONG))
+                    .corner_radius(CornerRadius::same(14))
+                    .inner_margin(egui::Margin::same(22)),
             )
             .show(ctx, |ui| {
+                ui.set_width(430.0);
+                ui.spacing_mut().item_spacing.y = 6.0;
                 ui.label(
-                    RichText::new(self.tr(
-                        "• Minimizar a la bandeja: oculta la ventana abajo junto al reloj y mantiene el giroscopio, Steam y DSU funcionando en segundo plano.",
-                        "• Minimize to Tray: hides the window to the taskbar tray and keeps Gyro, Steam DS4, and DSU running in the background.",
-                    ))
-                    .size(12.5)
-                    .color(TEXT_PRIMARY),
+                    RichText::new(t(l, "¿Qué querés hacer al cerrar?", "What would you like to do?"))
+                        .size(16.0)
+                        .strong()
+                        .color(TEXT_PRIMARY),
                 );
-                ui.add_space(6.0);
                 ui.label(
-                    RichText::new(self.tr(
-                        "• Cerrar completamente: detiene la app. Deberás desenchufar y volver a enchufar el dongle USB para que el mando vuelva a funcionar en modo XInput normal.",
-                        "• Exit Completely: stops the bridge. You will need to unplug and replug the USB dongle to restore default XInput mode.",
+                    RichText::new(t(
+                        l,
+                        "Elegí cómo se comporta la ventana al pulsar X.",
+                        "Choose how the window behaves when you click X.",
                     ))
-                    .size(12.5)
-                    .color(ACCENT_AMBER),
+                    .size(12.0)
+                    .color(TEXT_MUTED),
+                );
+                ui.add_space(10.0);
+
+                option_tile(
+                    ui,
+                    ACCENT_CYAN,
+                    t(l, "Minimizar a la bandeja", "Minimize to Tray"),
+                    t(
+                        l,
+                        "Oculta la ventana abajo junto al reloj y mantiene el giroscopio, Steam y DSU funcionando en segundo plano.",
+                        "Hides the window to the taskbar tray and keeps Gyro, Steam DS4, and DSU running in the background.",
+                    ),
+                    TEXT_SECONDARY,
+                );
+                ui.add_space(2.0);
+                option_tile(
+                    ui,
+                    ACCENT_AMBER,
+                    t(l, "Cerrar completamente", "Exit Completely"),
+                    t(
+                        l,
+                        "Detiene la app. Deberás desenchufar y volver a enchufar el dongle USB para que el mando vuelva a funcionar en modo XInput normal.",
+                        "Stops the bridge. You will need to unplug and replug the USB dongle to restore default XInput mode.",
+                    ),
+                    Color32::from_rgb(232, 196, 120),
                 );
 
-                ui.add_space(12.0);
-                let remember_lbl = self.tr(
-                    "Recordar mi elección (se puede cambiar en Avanzado)",
-                    "Remember my choice (can be changed in Advanced)",
+                ui.add_space(10.0);
+                ui.checkbox(
+                    &mut self.remember_close_choice,
+                    RichText::new(t(
+                        l,
+                        "Recordar mi elección (se puede cambiar en Avanzado)",
+                        "Remember my choice (can be changed in Advanced)",
+                    ))
+                    .size(12.5)
+                    .color(TEXT_SECONDARY),
                 );
-                ui.checkbox(&mut self.remember_close_choice, remember_lbl);
-
                 ui.add_space(14.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(self.tr("Minimizar a la bandeja", "Minimize to Tray"))
-                                    .strong()
-                                    .color(Color32::WHITE),
-                            )
-                            .fill(Color32::from_rgb(34, 118, 210))
-                            .corner_radius(CornerRadius::same(8))
-                            .min_size(Vec2::new(160.0, 32.0)),
-                        )
-                        .clicked()
-                    {
-                        if self.remember_close_choice {
-                            self.cfg.close_action = CloseAction::MinimizeToTray;
-                            self.sync_config();
-                        }
-                        self.show_close_modal = false;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-                    }
 
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(self.tr("Cerrar app", "Exit App"))
-                                    .strong()
-                                    .color(Color32::WHITE),
-                            )
-                            .fill(Color32::from_rgb(185, 52, 68))
-                            .corner_radius(CornerRadius::same(8))
-                            .min_size(Vec2::new(105.0, 32.0)),
-                        )
-                        .clicked()
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if solid_button(
+                        ui,
+                        t(l, "Minimizar a la bandeja", "Minimize to Tray"),
+                        Color32::from_rgb(14, 116, 178),
+                        Color32::WHITE,
+                        Stroke::NONE,
+                    )
+                    .clicked()
                     {
-                        if self.remember_close_choice {
-                            self.cfg.close_action = CloseAction::Exit;
-                            self.sync_config();
-                        }
-                        self.show_close_modal = false;
-                        self.force_exit.store(true, Ordering::Relaxed);
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        choice = Some(ModalChoice::Tray);
                     }
-
+                    if solid_button(
+                        ui,
+                        t(l, "Cerrar app", "Exit App"),
+                        Color32::from_rgb(58, 24, 32),
+                        Color32::from_rgb(255, 176, 186),
+                        Stroke::new(1.0, with_alpha(ACCENT_CORAL, 110)),
+                    )
+                    .clicked()
+                    {
+                        choice = Some(ModalChoice::Exit);
+                    }
                     if ui
                         .add(
-                            egui::Button::new(self.tr("Cancelar", "Cancel"))
+                            egui::Button::new(RichText::new(t(l, "Cancelar", "Cancel")).size(13.0))
                                 .corner_radius(CornerRadius::same(8))
-                                .min_size(Vec2::new(82.0, 32.0)),
+                                .min_size(Vec2::new(84.0, 32.0)),
                         )
                         .clicked()
                     {
-                        self.show_close_modal = false;
+                        choice = Some(ModalChoice::Cancel);
                     }
                 });
             });
+
+        if choice.is_none() && modal.should_close() {
+            choice = Some(ModalChoice::Cancel);
+        }
+
+        match choice {
+            Some(ModalChoice::Tray) => {
+                if self.remember_close_choice {
+                    self.cfg.close_action = CloseAction::MinimizeToTray;
+                    self.sync_config();
+                }
+                self.show_close_modal = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
+            Some(ModalChoice::Exit) => {
+                if self.remember_close_choice {
+                    self.cfg.close_action = CloseAction::Exit;
+                    self.sync_config();
+                }
+                self.show_close_modal = false;
+                self.force_exit.store(true, Ordering::Relaxed);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(ModalChoice::Cancel) => self.show_close_modal = false,
+            None => {}
+        }
+    }
+
+    fn ui_header(&mut self, ui: &mut egui::Ui, status: &BridgeStatus) {
+        let l = self.cfg.lang;
+        let time = ui.input(|i| i.time) as f32;
+        ui.spacing_mut().item_spacing.y = 0.0;
+
+        // ── Row 1: identity + status on the left, actions on the right ──
+        let row_w = ui.available_width();
+        ui.allocate_ui_with_layout(Vec2::new(row_w, 44.0), Layout::left_to_right(Align::Center), |ui| {
+            ui.set_height(44.0);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 3.0;
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(
+                        RichText::new("8BitDo Pro 3")
+                            .size(17.0)
+                            .strong()
+                            .color(TEXT_PRIMARY),
+                    );
+                    ui.label(RichText::new("Gyro Bridge").size(17.0).color(TEXT_MUTED));
+                    ui.add_space(4.0);
+                    egui::Frame::default()
+                        .stroke(Stroke::new(1.0, STROKE_STRONG))
+                        .corner_radius(CornerRadius::same(10))
+                        .inner_margin(egui::Margin::symmetric(7, 1))
+                        .show(ui, |ui| {
+                            ui.label(
+                                RichText::new("2.4 GHz · 200 Hz")
+                                    .size(10.5)
+                                    .color(TEXT_SECONDARY),
+                            );
+                        });
+                });
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 7.0;
+                    let dot_color = if status.connected {
+                        ACCENT_GREEN
+                    } else if status.running {
+                        ACCENT_AMBER
+                    } else {
+                        TEXT_MUTED
+                    };
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+                    let pulse = if status.connected || !status.running {
+                        0.55
+                    } else {
+                        (time * 3.2).sin() * 0.5 + 0.5
+                    };
+                    let p = ui.painter();
+                    p.circle_filled(
+                        rect.center(),
+                        3.5 + 2.5 * pulse,
+                        with_alpha(dot_color, (30.0 + 40.0 * pulse) as u8),
+                    );
+                    p.circle_filled(rect.center(), 3.4, dot_color);
+                    ui.label(
+                        RichText::new(status.conn_state.label(l))
+                            .size(12.0)
+                            .color(TEXT_SECONDARY),
+                    );
+                });
+            });
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                let is_running = self.ctrl.running.load(Ordering::Relaxed);
+                let (txt, fill, fg, stroke, tip) = if is_running {
+                    (
+                        t(l, "Detener", "Stop"),
+                        Color32::from_rgb(52, 22, 30),
+                        Color32::from_rgb(255, 170, 182),
+                        Stroke::new(1.0, with_alpha(ACCENT_CORAL, 100)),
+                        t(
+                            l,
+                            "Detiene el puente (HID → ViGEm / DSU)",
+                            "Stops the bridge (HID → ViGEm / DSU)",
+                        ),
+                    )
+                } else {
+                    (
+                        t(l, "Iniciar", "Start"),
+                        Color32::from_rgb(16, 146, 104),
+                        Color32::WHITE,
+                        Stroke::NONE,
+                        t(
+                            l,
+                            "Inicia el puente (HID → ViGEm / DSU)",
+                            "Starts the bridge (HID → ViGEm / DSU)",
+                        ),
+                    )
+                };
+                if solid_button(ui, txt, fill, fg, stroke)
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.ctrl.running.store(!is_running, Ordering::Relaxed);
+                }
+
+                let need_ctrl = t(l, "Conectá el mando primero", "Connect the controller first");
+                if ghost_button(ui, t(l, "Vibrar", "Rumble"), status.connected)
+                    .on_hover_text(t(
+                        l,
+                        "Envía un pulso corto de vibración de prueba",
+                        "Sends a short test rumble pulse",
+                    ))
+                    .on_disabled_hover_text(need_ctrl)
+                    .clicked()
+                {
+                    self.ctrl.request_test_rumble.store(true, Ordering::Relaxed);
+                }
+                if ghost_button(ui, t(l, "Calibrar", "Calibrate"), status.connected)
+                    .on_hover_text(t(
+                        l,
+                        "Recalibra el bias del giroscopio (dejá el mando quieto). Atajo en el mando: Minus + Plus",
+                        "Recalibrates gyroscope bias (keep the controller still). Controller shortcut: Minus + Plus",
+                    ))
+                    .on_disabled_hover_text(need_ctrl)
+                    .clicked()
+                {
+                    self.ctrl.request_calibrate.store(true, Ordering::Relaxed);
+                }
+
+                ui.add_space(8.0);
+                segmented(
+                    ui,
+                    &mut self.cfg.lang,
+                    &[(Language::En, "EN"), (Language::Es, "ES")],
+                    &["English", "Español"],
+                );
+            });
+        });
+
+        ui.add_space(10.0);
+
+        // ── Row 2: quiet single-line status strip ──
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let hz_col = if status.rate_hz > 150.0 {
+                ACCENT_GREEN
+            } else if status.rate_hz > 1.0 {
+                ACCENT_AMBER
+            } else {
+                TEXT_SECONDARY
+            };
+            strip_item(ui, t(l, "Frecuencia", "Rate"), &format!("{:.0} Hz", status.rate_hz), hz_col);
+            strip_sep(ui);
+
+            ui.label(RichText::new(t(l, "Batería", "Battery")).size(11.5).color(TEXT_MUTED));
+            let bat_known = status.connected || status.battery > 0;
+            battery_glyph(ui, status.battery, bat_known);
+            let bat_col = if !bat_known {
+                TEXT_SECONDARY
+            } else if status.battery < 25 {
+                ACCENT_CORAL
+            } else {
+                TEXT_PRIMARY
+            };
+            let bat_txt = if bat_known {
+                format!("{}%", status.battery)
+            } else {
+                "—".to_string()
+            };
+            ui.label(RichText::new(bat_txt).size(11.5).color(bat_col));
+            strip_sep(ui);
+
+            let (vigem_txt, vigem_col, vigem_full) = if let Some(err) = &status.vigem_error {
+                (ellipsize(err, 44), ACCENT_CORAL, Some(err.clone()))
+            } else {
+                let s: &str = match status.vigem_mode_active {
+                    Some(PadMode::Ds4NativeGyro) => {
+                        t(l, "DualShock 4 (Gyro Nativo Steam)", "DualShock 4 (Native Steam Gyro)")
+                    }
+                    Some(PadMode::Xbox360) => "Xbox 360 (XInput)",
+                    Some(PadMode::None) => t(l, "Solo DSU", "DSU Only"),
+                    None => t(l, "inactivo", "inactive"),
+                };
+                let col = if status.vigem_ok { TEXT_PRIMARY } else { ACCENT_AMBER };
+                (s.to_string(), col, None)
+            };
+            let r = strip_item(ui, "ViGEmBus", &vigem_txt, vigem_col);
+            if let Some(full) = vigem_full {
+                r.on_hover_text(full);
+            }
+            strip_sep(ui);
+
+            let (dsu_txt, dsu_col, dsu_full) = if self.cfg.dsu_enabled {
+                if let Some(err) = &status.dsu_error {
+                    (ellipsize(err, 40), ACCENT_CORAL, Some(err.clone()))
+                } else {
+                    let cli = match (l, status.dsu_clients) {
+                        (Language::Es, 1) => "cliente",
+                        (Language::Es, _) => "clientes",
+                        (Language::En, 1) => "client",
+                        (Language::En, _) => "clients",
+                    };
+                    (
+                        format!(":{} · {} {}", self.cfg.dsu_port, status.dsu_clients, cli),
+                        if status.dsu_clients > 0 { ACCENT_CYAN } else { TEXT_PRIMARY },
+                        None,
+                    )
+                }
+            } else {
+                (t(l, "desactivado", "off").to_string(), TEXT_MUTED, None)
+            };
+            let r = strip_item(ui, "DSU", &dsu_txt, dsu_col);
+            if let Some(full) = dsu_full {
+                r.on_hover_text(full);
+            }
+        });
+
+        ui.add_space(4.0);
+
+        // ── Row 3: underline navigation tabs (sit on the panel separator) ──
+        let tabs = [
+            (Tab::Dashboard, t(l, "Panel en Vivo", "Live Dashboard")),
+            (Tab::Paddles, t(l, "Botones Traseros (PL / PR)", "Back Paddles (PL / PR)")),
+            (Tab::Advanced, t(l, "Gyro PC & Avanzado", "PC Gyro & Advanced")),
+        ];
+        tab_bar(ui, &mut self.tab, &tabs);
     }
 }
 
@@ -237,263 +508,47 @@ impl eframe::App for Pro3App {
             .lock()
             .map(|s| s.clone())
             .unwrap_or_default();
-        let lang = self.cfg.lang;
         let prev_cfg_header = self.cfg.clone();
 
-        // Top Header Bar
         egui::TopBottomPanel::top("header")
+            .show_separator_line(true)
             .frame(
                 egui::Frame::default()
-                    .fill(BG_HEADER)
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(30, 35, 50)))
-                    .inner_margin(egui::Margin::symmetric(18, 12)),
+                    .fill(BG_CANVAS)
+                    .inner_margin(egui::Margin {
+                        left: 20,
+                        right: 20,
+                        top: 14,
+                        bottom: 0,
+                    }),
             )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("8BitDo Pro 3")
-                                    .size(20.0)
-                                    .strong()
-                                    .color(TEXT_PRIMARY),
-                            );
-                            egui::Frame::default()
-                                .fill(Color32::from_rgb(24, 52, 78))
-                                .stroke(Stroke::new(1.0, Color32::from_rgb(46, 118, 178)))
-                                .corner_radius(CornerRadius::same(6))
-                                .inner_margin(egui::Margin::symmetric(7, 2))
-                                .show(ui, |ui| {
-                                    ui.label(
-                                        RichText::new("2.4 GHz · 200 Hz")
-                                            .size(11.0)
-                                            .strong()
-                                            .color(ACCENT_CYAN),
-                                    );
-                                });
-                        });
-
-                        let dot_color = if status.connected {
-                            ACCENT_GREEN
-                        } else if status.running {
-                            ACCENT_AMBER
-                        } else {
-                            TEXT_MUTED
-                        };
-                        ui.horizontal(|ui| {
-                            let (rect, _) =
-                                ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
-                            ui.painter().circle_filled(
-                                rect.center(),
-                                5.5,
-                                Color32::from_rgba_unmultiplied(
-                                    dot_color.r(),
-                                    dot_color.g(),
-                                    dot_color.b(),
-                                    55,
-                                ),
-                            );
-                            ui.painter().circle_filled(rect.center(), 3.6, dot_color);
-                            ui.label(
-                                RichText::new(status.conn_state.label(lang))
-                                    .size(12.5)
-                                    .color(Color32::from_rgb(176, 186, 206)),
-                            );
-                        });
-                    });
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Language Switcher ES | EN
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(&mut self.cfg.lang, Language::En, "EN");
-                            ui.selectable_value(&mut self.cfg.lang, Language::Es, "ES");
-                        });
-
-                        ui.add_space(6.0);
-
-                        let is_running = self.ctrl.running.load(Ordering::Relaxed);
-                        let btn_text = if is_running {
-                            self.tr("Detener", "Stop")
-                        } else {
-                            self.tr("Iniciar", "Start")
-                        };
-                        let btn_fill = if is_running {
-                            Color32::from_rgb(185, 52, 68)
-                        } else {
-                            Color32::from_rgb(28, 148, 96)
-                        };
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new(btn_text)
-                                        .strong()
-                                        .size(13.0)
-                                        .color(Color32::WHITE),
-                                )
-                                .fill(btn_fill)
-                                .corner_radius(CornerRadius::same(8))
-                                .min_size(Vec2::new(82.0, 32.0)),
-                            )
-                            .clicked()
-                        {
-                            self.ctrl.running.store(!is_running, Ordering::Relaxed);
-                        }
-
-                        if ui
-                            .add_enabled(
-                                status.connected,
-                                egui::Button::new(
-                                    RichText::new(self.tr("Vibrar", "Rumble")).size(12.5),
-                                )
-                                .corner_radius(CornerRadius::same(8))
-                                .min_size(Vec2::new(72.0, 32.0)),
-                            )
-                            .clicked()
-                        {
-                            self.ctrl.request_test_rumble.store(true, Ordering::Relaxed);
-                        }
-
-                        if ui
-                            .add_enabled(
-                                status.connected,
-                                egui::Button::new(
-                                    RichText::new(self.tr("Calibrar", "Calibrate")).size(12.5),
-                                )
-                                .corner_radius(CornerRadius::same(8))
-                                .min_size(Vec2::new(84.0, 32.0)),
-                            )
-                            .clicked()
-                        {
-                            self.ctrl.request_calibrate.store(true, Ordering::Relaxed);
-                        }
-                    });
-                });
-
-                ui.add_space(9.0);
-                ui.horizontal_wrapped(|ui| {
-                    status_pill(
-                        ui,
-                        &format!("{:.0} Hz", status.rate_hz),
-                        if status.rate_hz > 150.0 {
-                            Color32::from_rgb(20, 74, 58)
-                        } else {
-                            Color32::from_rgb(34, 39, 52)
-                        },
-                        if status.rate_hz > 150.0 {
-                            ACCENT_GREEN
-                        } else {
-                            TEXT_MUTED
-                        },
-                    );
-                    let bat_lbl = match lang {
-                        Language::Es => format!("Batería {}%", status.battery),
-                        Language::En => format!("Battery {}%", status.battery),
-                    };
-                    status_pill(
-                        ui,
-                        &bat_lbl,
-                        if status.battery >= 25 {
-                            Color32::from_rgb(24, 50, 78)
-                        } else {
-                            Color32::from_rgb(104, 38, 42)
-                        },
-                        if status.battery >= 25 {
-                            ACCENT_CYAN
-                        } else {
-                            ACCENT_CORAL
-                        },
-                    );
-                    let vigem_lbl = if let Some(err) = &status.vigem_error {
-                        err.clone()
-                    } else {
-                        match (lang, status.vigem_mode_active) {
-                            (Language::Es, Some(PadMode::Ds4NativeGyro)) => {
-                                "DualShock 4 (Gyro Nativo Steam)".into()
-                            }
-                            (Language::En, Some(PadMode::Ds4NativeGyro)) => {
-                                "DualShock 4 (Native Steam Gyro)".into()
-                            }
-                            (_, Some(PadMode::Xbox360)) => "Xbox 360 (XInput)".into(),
-                            (Language::Es, Some(PadMode::None)) => "Solo DSU".into(),
-                            (Language::En, Some(PadMode::None)) => "DSU Only".into(),
-                            (Language::Es, None) => "ViGEmBus inactivo".into(),
-                            (Language::En, None) => "ViGEmBus inactive".into(),
-                        }
-                    };
-                    status_pill(
-                        ui,
-                        &vigem_lbl,
-                        if status.vigem_ok {
-                            Color32::from_rgb(38, 42, 92)
-                        } else {
-                            Color32::from_rgb(62, 46, 38)
-                        },
-                        if status.vigem_ok {
-                            ACCENT_VIOLET
-                        } else {
-                            ACCENT_AMBER
-                        },
-                    );
-                    let dsu_txt = if self.cfg.dsu_enabled {
-                        if let Some(err) = &status.dsu_error {
-                            format!("DSU {err}")
-                        } else {
-                            format!("DSU :{} ({} cli)", self.cfg.dsu_port, status.dsu_clients)
-                        }
-                    } else {
-                        "DSU: OFF".into()
-                    };
-                    status_pill(
-                        ui,
-                        &dsu_txt,
-                        Color32::from_rgb(32, 37, 50),
-                        Color32::from_rgb(190, 200, 220),
-                    );
-                });
-            });
+            .show(ctx, |ui| self.ui_header(ui, &status));
 
         if self.cfg != prev_cfg_header {
             self.sync_config();
         }
 
-        // Sleek Navigation Tabs
-        egui::TopBottomPanel::top("tabs")
-            .frame(
-                egui::Frame::default()
-                    .fill(Color32::from_rgb(14, 17, 24))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(28, 33, 46)))
-                    .inner_margin(egui::Margin::symmetric(18, 7)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let t1 = self.tr("Panel en Vivo", "Live Dashboard");
-                    let t2 = self.tr("Botones Traseros (PL / PR)", "Back Paddles (PL / PR)");
-                    let t3 = self.tr("Gyro PC & Avanzado", "PC Gyro & Advanced");
-                    tab_button(ui, &mut self.tab, Tab::Dashboard, t1);
-                    tab_button(ui, &mut self.tab, Tab::Paddles, t2);
-                    tab_button(ui, &mut self.tab, Tab::Advanced, t3);
-                });
-            });
-
-        // Main Content
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::default()
                     .fill(BG_CANVAS)
-                    .inner_margin(egui::Margin::same(16)),
+                    .inner_margin(egui::Margin::symmetric(20, 16)),
             )
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let prev_cfg = self.cfg.clone();
-                    match self.tab {
-                        Tab::Dashboard => self.ui_dashboard(ui, &status),
-                        Tab::Paddles => self.ui_paddles(ui, &status),
-                        Tab::Advanced => self.ui_advanced(ui, &status),
-                    }
-                    if self.cfg != prev_cfg {
-                        self.sync_config();
-                    }
-                });
+                let view_h = ui.available_height();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let prev_cfg = self.cfg.clone();
+                        match self.tab {
+                            Tab::Dashboard => self.ui_dashboard(ui, &status, view_h),
+                            Tab::Paddles => self.ui_paddles(ui, &status),
+                            Tab::Advanced => self.ui_advanced(ui, &status),
+                        }
+                        if self.cfg != prev_cfg {
+                            self.sync_config();
+                        }
+                    });
             });
 
         self.render_close_modal(ctx);
@@ -501,103 +556,123 @@ impl eframe::App for Pro3App {
 }
 
 impl Pro3App {
-    fn ui_dashboard(&mut self, ui: &mut egui::Ui, status: &BridgeStatus) {
+    fn ui_dashboard(&mut self, ui: &mut egui::Ui, status: &BridgeStatus, view_h: f32) {
         let st = &status.telemetry;
-        let lang = self.cfg.lang;
+        let l = self.cfg.lang;
+        let gap = 12.0;
 
-        // Top compact output bar
-        let card_title = self.tr("Perfil de Salida", "Output Profile");
-        card(ui, card_title, |ui| {
+        // ── Output profile: compact settings bar ──
+        let prof = card(ui, "", None, 0.0, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new(match lang { Language::Es => "Mando:", Language::En => "Controller:" }).color(TEXT_MUTED));
-                ui.selectable_value(
+                ui.spacing_mut().item_spacing = Vec2::new(10.0, 8.0);
+                field_label(ui, t(l, "Salida", "Output"));
+                segmented(
+                    ui,
                     &mut self.cfg.pad_mode,
-                    PadMode::Ds4NativeGyro,
-                    match lang {
-                        Language::Es => "DualShock 4 (Gyro Nativo Steam)",
-                        Language::En => "DualShock 4 (Native Steam Gyro)",
-                    },
+                    &[
+                        (
+                            PadMode::Ds4NativeGyro,
+                            t(l, "DualShock 4 · Gyro nativo", "DualShock 4 · Native gyro"),
+                        ),
+                        (PadMode::Xbox360, "Xbox 360"),
+                        (PadMode::None, t(l, "Solo DSU", "DSU Only")),
+                    ],
+                    &[
+                        t(
+                            l,
+                            "DualShock 4 virtual con giroscopio nativo para Steam Input",
+                            "Virtual DualShock 4 with native gyro for Steam Input",
+                        ),
+                        t(l, "Mando Xbox 360 virtual (XInput, sin gyro)", "Virtual Xbox 360 pad (XInput, no gyro)"),
+                        t(
+                            l,
+                            "Sin mando virtual: solo movimiento por DSU para emuladores",
+                            "No virtual pad: motion over DSU for emulators only",
+                        ),
+                    ],
                 );
-                ui.selectable_value(&mut self.cfg.pad_mode, PadMode::Xbox360, "Xbox 360");
-                ui.selectable_value(
-                    &mut self.cfg.pad_mode,
-                    PadMode::None,
-                    match lang { Language::Es => "Solo DSU", Language::En => "DSU Only" },
+                ui.add_space(10.0);
+                field_label(ui, t(l, "Botones", "Buttons"));
+                segmented(
+                    ui,
+                    &mut self.cfg.layout,
+                    &[(ButtonLayout::XboxPs, "Xbox / PS"), (ButtonLayout::Nintendo, "Nintendo")],
+                    &[
+                        t(l, "A abajo, B derecha (estándar Xbox / PlayStation)", "A bottom, B right (Xbox / PlayStation standard)"),
+                        t(l, "Intercambia A/B y X/Y (estilo Nintendo)", "Swaps A/B and X/Y (Nintendo style)"),
+                    ],
                 );
-
-                ui.separator();
-                ui.label(RichText::new(match lang { Language::Es => "Botones:", Language::En => "Buttons:" }).color(TEXT_MUTED));
-                ui.selectable_value(&mut self.cfg.layout, ButtonLayout::XboxPs, "Xbox / PS");
-                ui.selectable_value(&mut self.cfg.layout, ButtonLayout::Nintendo, "Nintendo");
             });
-
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.checkbox(
-                    &mut self.cfg.dsu_enabled,
-                    match lang {
-                        Language::Es => "DSU Emuladores (UDP)",
-                        Language::En => "DSU Emulators (UDP)",
-                    },
-                );
-                ui.separator();
-                ui.checkbox(
-                    &mut self.cfg.rumble_enabled,
-                    match lang { Language::Es => "Vibración", Language::En => "Rumble" },
-                );
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                toggle(ui, &mut self.cfg.dsu_enabled, t(l, "DSU Emuladores (UDP)", "DSU Emulators (UDP)"));
+                ui.add_space(14.0);
+                toggle(ui, &mut self.cfg.rumble_enabled, t(l, "Vibración", "Rumble"));
                 if self.cfg.rumble_enabled {
+                    ui.spacing_mut().slider_width = 150.0;
                     ui.add(
                         egui::Slider::new(&mut self.cfg.rumble_strength, 0.1..=1.0)
                             .fixed_decimals(0)
                             .custom_formatter(|v, _| format!("{}%", (v * 100.0).round() as i32)),
-                    );
+                    )
+                    .on_hover_text(t(l, "Intensidad de la vibración", "Rumble strength"));
                 }
             });
         });
 
-        ui.add_space(12.0);
+        ui.add_space(gap);
 
-        // Main visual showcase: Left = Interactive 8BitDo Pro 3 SVG Graphic, Right = Live Gyro Horizon + Telemetry
+        let showcase_h = (view_h - prof.rect.height() - gap - 2.0).clamp(330.0, 470.0);
+
         ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
             let total_w = ui.available_width();
-            let left_w = (total_w * 0.58).max(420.0);
-            let right_w = (total_w - left_w - 12.0).max(240.0);
+            let right_w = (total_w * 0.38).clamp(270.0, 380.0);
+            let left_w = (total_w - right_w - gap).max(380.0);
 
+            // ── Controller showcase ──
             ui.allocate_ui_with_layout(
-                Vec2::new(left_w, 355.0),
-                egui::Layout::top_down(egui::Align::Min),
+                Vec2::new(left_w, showcase_h),
+                Layout::top_down(Align::Min),
                 |ui| {
+                    let meta = if status.connected {
+                        (t(l, "En vivo", "Live"), ACCENT_GREEN)
+                    } else {
+                        (t(l, "Sin señal", "No signal"), TEXT_MUTED)
+                    };
                     card(
                         ui,
-                        match lang {
-                            Language::Es => "8BitDo Pro 3 · Vista Interactiva en Vivo",
-                            Language::En => "8BitDo Pro 3 · Live Interactive View",
-                        },
+                        t(l, "8BitDo Pro 3 · Vista en Vivo", "8BitDo Pro 3 · Live View"),
+                        Some(meta),
+                        showcase_h,
                         |ui| {
+                            let max_h = ui.available_height();
                             draw_pro3_controller(
                                 ui,
                                 self.pro3_tex.as_ref(),
                                 st,
                                 status.rumble_l,
                                 status.rumble_r,
+                                max_h,
                             );
                         },
                     );
                 },
             );
 
-            ui.add_space(12.0);
-
+            // ── Gyroscope & artificial horizon ──
             ui.allocate_ui_with_layout(
-                Vec2::new(right_w, 355.0),
-                egui::Layout::top_down(egui::Align::Min),
+                Vec2::new(right_w, showcase_h),
+                Layout::top_down(Align::Min),
                 |ui| {
+                    let hz = format!("{:.0} Hz", status.rate_hz);
+                    let hz_col = if status.rate_hz > 150.0 { ACCENT_GREEN } else { TEXT_MUTED };
                     card(
                         ui,
-                        match lang {
-                            Language::Es => "Giroscopio y Orientación (200 Hz)",
-                            Language::En => "Gyroscope & Orientation (200 Hz)",
-                        },
+                        t(l, "Giroscopio y Orientación", "Gyroscope & Orientation"),
+                        Some((&hz, hz_col)),
+                        showcase_h,
                         |ui| {
                             let gx = st.gx_dps - status.gyro_bias[0];
                             let gy = st.gy_dps - status.gyro_bias[1];
@@ -606,38 +681,41 @@ impl Pro3App {
                             let yaw_dps = gz;
                             let roll_dps = -gx;
 
-                            draw_horizon_gauge(ui, -st.ay_g, st.az_g, -st.ax_g, yaw_dps);
-                            ui.add_space(10.0);
-
-                            draw_signed_bar(ui, "Pitch", pitch_dps, 250.0, "°/s", ACCENT_CYAN);
-                            ui.add_space(5.0);
-                            draw_signed_bar(ui, "Yaw  ", yaw_dps, 250.0, "°/s", ACCENT_VIOLET);
-                            ui.add_space(5.0);
-                            draw_signed_bar(ui, "Roll ", roll_dps, 250.0, "°/s", ACCENT_GREEN);
-
-                            ui.add_space(10.0);
-                            ui.separator();
+                            let gauge = (ui.available_height() - 158.0)
+                                .clamp(120.0, 176.0)
+                                .min(ui.available_width());
+                            draw_horizon_gauge(ui, -st.ay_g, st.az_g, -st.ax_g, yaw_dps, gauge);
+                            ui.spacing_mut().item_spacing.y = 4.0;
                             ui.add_space(6.0);
-                            ui.label(
-                                RichText::new(format!(
-                                    "Accel:  X {:+.2}g   Y {:+.2}g   Z {:+.2}g",
+                            axis_bar(ui, "Pitch", pitch_dps, 250.0, ACCENT_CYAN);
+                            axis_bar(ui, "Yaw", yaw_dps, 250.0, ACCENT_VIOLET);
+                            axis_bar(ui, "Roll", roll_dps, 250.0, ACCENT_GREEN);
+
+                            ui.add_space(4.0);
+                            hairline(ui);
+                            ui.add_space(4.0);
+
+                            kv_mono(
+                                ui,
+                                "Accel",
+                                &format!(
+                                    "X {:+.2}  Y {:+.2}  Z {:+.2} g",
                                     -st.ay_g, st.az_g, -st.ax_g
-                                ))
-                                .monospace()
-                                .size(11.5)
-                                .color(Color32::from_rgb(176, 190, 214)),
+                                ),
                             );
-                            let bias_txt = match lang {
-                                Language::Es => format!(
-                                    "Bias: ({:+.2}, {:+.2}, {:+.2}) °/s · Minus+Plus recalibra",
+                            kv_mono(
+                                ui,
+                                "Bias",
+                                &format!(
+                                    "{:+.2}  {:+.2}  {:+.2} °/s",
                                     status.gyro_bias[0], status.gyro_bias[1], status.gyro_bias[2]
                                 ),
-                                Language::En => format!(
-                                    "Bias: ({:+.2}, {:+.2}, {:+.2}) °/s · Minus+Plus recalibrates",
-                                    status.gyro_bias[0], status.gyro_bias[1], status.gyro_bias[2]
-                                ),
-                            };
-                            ui.label(RichText::new(bias_txt).size(11.0).color(TEXT_MUTED));
+                            )
+                            .on_hover_text(t(
+                                l,
+                                "Minus + Plus recalibra el giroscopio",
+                                "Minus + Plus recalibrates the gyroscope",
+                            ));
                         },
                     );
                 },
@@ -647,85 +725,86 @@ impl Pro3App {
 
     fn ui_paddles(&mut self, ui: &mut egui::Ui, status: &BridgeStatus) {
         let btns = status.telemetry.btns;
-        let lang = self.cfg.lang;
+        let l = self.cfg.lang;
         card(
             ui,
-            match lang {
-                Language::Es => "Botones Traseros Independientes (PL / PR)",
-                Language::En => "Independent Back Paddles (PL / PR)",
-            },
+            t(l, "Botones Traseros Independientes (PL / PR)", "Independent Back Paddles (PL / PR)"),
+            None,
+            0.0,
             |ui| {
                 ui.label(
-                    RichText::new(match lang {
-                        Language::Es => "Los botones traseros PL y PR se reciben de forma independiente por radio 2.4 GHz. Presionalos para confirmar cuál corresponde a P1 / P2 y elegí su acción:",
-                        Language::En => "The PL and PR back paddles are received independently over 2.4 GHz. Press each paddle to see which indicator lights up and choose its action:",
-                    })
-                    .color(Color32::from_rgb(185, 194, 212)),
+                    RichText::new(t(
+                        l,
+                        "Los botones traseros PL y PR se reciben de forma independiente por radio 2.4 GHz. Presionalos para confirmar cuál corresponde a P1 / P2 y elegí su acción:",
+                        "The PL and PR back paddles are received independently over 2.4 GHz. Press each paddle to see which indicator lights up and choose its action:",
+                    ))
+                    .size(12.5)
+                    .color(TEXT_SECONDARY),
+                );
+                ui.add_space(14.0);
+
+                paddle_row(
+                    ui,
+                    "PL",
+                    t(l, "Trasero PL / P1", "Back Paddle PL / P1"),
+                    "bit 25 · 0x02000000",
+                    (btns & BTN_P1) != 0,
+                    "p1",
+                    &mut self.cfg.paddle_p1,
+                    l,
                 );
                 ui.add_space(8.0);
-                ui.label(
-                    RichText::new(match lang {
-                        Language::Es => format!("Máscara de botones actual: 0x{:08X}", btns),
-                        Language::En => format!("Current raw button bitmask: 0x{:08X}", btns),
-                    })
-                    .monospace()
-                    .size(12.0)
-                    .color(ACCENT_CYAN),
+                paddle_row(
+                    ui,
+                    "PR",
+                    t(l, "Trasero PR / P2", "Back Paddle PR / P2"),
+                    "bit 26 · 0x04000000",
+                    (btns & BTN_P2) != 0,
+                    "p2",
+                    &mut self.cfg.paddle_p2,
+                    l,
                 );
-                ui.add_space(10.0);
 
-                egui::Grid::new("paddle_grid")
-                    .num_columns(3)
-                    .spacing([16.0, 12.0])
-                    .show(ui, |ui| {
-                        paddle_row(
-                            ui,
-                            match lang {
-                                Language::Es => "Trasero PL / P1 (bit 25)",
-                                Language::En => "Back Paddle PL / P1 (bit 25)",
-                            },
-                            (btns & BTN_P1) != 0,
-                            "p1",
-                            &mut self.cfg.paddle_p1,
-                            lang,
-                        );
-                        paddle_row(
-                            ui,
-                            match lang {
-                                Language::Es => "Trasero PR / P2 (bit 26)",
-                                Language::En => "Back Paddle PR / P2 (bit 26)",
-                            },
-                            (btns & BTN_P2) != 0,
-                            "p2",
-                            &mut self.cfg.paddle_p2,
-                            lang,
-                        );
-                    });
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    field_label(ui, t(l, "Máscara de botones actual", "Current raw button bitmask"));
+                    ui.label(
+                        RichText::new(format!("0x{:08X}", btns))
+                            .monospace()
+                            .size(12.5)
+                            .color(ACCENT_CYAN),
+                    );
+                });
+                ui.add_space(6.0);
+                bit_strip(ui, btns);
 
-                ui.add_space(14.0);
+                ui.add_space(16.0);
                 egui::Frame::default()
-                    .fill(Color32::from_rgb(26, 31, 44))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(46, 56, 78)))
-                    .corner_radius(CornerRadius::same(8))
-                    .inner_margin(egui::Margin::same(10))
+                    .fill(lerp_color(BG_CARD, ACCENT_AMBER, 0.07))
+                    .corner_radius(CornerRadius::same(10))
+                    .inner_margin(egui::Margin::symmetric(14, 12))
                     .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
                         ui.label(
-                            RichText::new(match lang {
-                                Language::Es => "¿Qué pasa con los botones superiores L4 y R4?",
-                                Language::En => "What about the extra L4 and R4 shoulder buttons?",
-                            })
+                            RichText::new(t(
+                                l,
+                                "¿Qué pasa con los botones superiores L4 y R4?",
+                                "What about the extra L4 and R4 shoulder buttons?",
+                            ))
                             .strong()
                             .size(12.5)
                             .color(ACCENT_AMBER),
                         );
-                        ui.add_space(3.0);
+                        ui.add_space(2.0);
                         ui.label(
-                            RichText::new(match lang {
-                                Language::Es => "El firmware del dongle 2.4 GHz (paquete de radio 0xA2) solo expone PL y PR como bits crudos independientes; L4 y R4 no se envían como bits separados si están sin asignar. Para usar L4 y R4, asignales cualquier botón desde el propio mando o con 8BitDo Ultimate Software y funcionarán normalmente en todos los juegos.",
-                                Language::En => "The 2.4 GHz dongle firmware (0xA2 radio packet) only exposes PL and PR as separate raw bits; unmapped L4 and R4 buttons are not sent separately. To use L4 and R4, map them to any standard button on the controller or via 8BitDo Ultimate Software and they will work in all games.",
-                            })
+                            RichText::new(t(
+                                l,
+                                "El firmware del dongle 2.4 GHz (paquete de radio 0xA2) solo expone PL y PR como bits crudos independientes; L4 y R4 no se envían como bits separados si están sin asignar. Para usar L4 y R4, asignales cualquier botón desde el propio mando o con 8BitDo Ultimate Software y funcionarán normalmente en todos los juegos.",
+                                "The 2.4 GHz dongle firmware (0xA2 radio packet) only exposes PL and PR as separate raw bits; unmapped L4 and R4 buttons are not sent separately. To use L4 and R4, map them to any standard button on the controller or via 8BitDo Ultimate Software and they will work in all games.",
+                            ))
                             .size(12.0)
-                            .color(Color32::from_rgb(175, 184, 204)),
+                            .color(TEXT_SECONDARY),
                         );
                     });
             },
@@ -733,112 +812,122 @@ impl Pro3App {
     }
 
     fn ui_advanced(&mut self, ui: &mut egui::Ui, status: &BridgeStatus) {
-        let lang = self.cfg.lang;
+        let l = self.cfg.lang;
 
-        // Window / System Tray behavior card
+        // ── Window / tray behavior ──
         card(
             ui,
-            match lang {
-                Language::Es => "Comportamiento de Ventana y Bandeja del Sistema",
-                Language::En => "Window & System Tray Behavior",
-            },
+            t(l, "Ventana y Bandeja del Sistema", "Window & System Tray"),
+            None,
+            0.0,
             |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(match lang {
-                        Language::Es => "Al pulsar X (cerrar ventana):",
-                        Language::En => "When clicking X (close window):",
-                    });
-                    ui.selectable_value(
+                setting_row(ui, t(l, "Al pulsar X (cerrar)", "When clicking X (close)"), |ui| {
+                    segmented(
+                        ui,
                         &mut self.cfg.close_action,
-                        CloseAction::Ask,
-                        match lang {
-                            Language::Es => "Preguntar siempre",
-                            Language::En => "Always ask",
-                        },
-                    );
-                    ui.selectable_value(
-                        &mut self.cfg.close_action,
-                        CloseAction::MinimizeToTray,
-                        match lang {
-                            Language::Es => "Minimizar a la bandeja",
-                            Language::En => "Minimize to Tray",
-                        },
-                    );
-                    ui.selectable_value(
-                        &mut self.cfg.close_action,
-                        CloseAction::Exit,
-                        match lang {
-                            Language::Es => "Cerrar completamente",
-                            Language::En => "Exit completely",
-                        },
+                        &[
+                            (CloseAction::Ask, t(l, "Preguntar siempre", "Always ask")),
+                            (CloseAction::MinimizeToTray, t(l, "Minimizar a la bandeja", "Minimize to Tray")),
+                            (CloseAction::Exit, t(l, "Cerrar completamente", "Exit completely")),
+                        ],
+                        &[],
                     );
                 });
+                let hint = match self.cfg.close_action {
+                    CloseAction::Ask => t(
+                        l,
+                        "Se mostrará un diálogo cada vez que cierres la ventana.",
+                        "A dialog will be shown every time you close the window.",
+                    ),
+                    CloseAction::MinimizeToTray => t(
+                        l,
+                        "La ventana se oculta en la bandeja y el puente sigue funcionando.",
+                        "The window hides to the tray and the bridge keeps running.",
+                    ),
+                    CloseAction::Exit => t(
+                        l,
+                        "La app se cierra: desenchufá y volvé a enchufar el dongle para restaurar XInput.",
+                        "The app exits: unplug and replug the dongle to restore XInput.",
+                    ),
+                };
+                ui.label(RichText::new(hint).size(11.5).color(TEXT_MUTED));
             },
         );
 
         ui.add_space(12.0);
 
+        // ── Direct PC gyro ──
+        let gyro_meta = if self.cfg.gyro_pc_mode == GyroPcMode::Off {
+            (t(l, "desactivado", "off"), TEXT_MUTED)
+        } else if status.gyro_pc_active {
+            (t(l, "ACTIVO", "ACTIVE"), ACCENT_GREEN)
+        } else {
+            (t(l, "en espera", "standby"), ACCENT_AMBER)
+        };
         card(
             ui,
-            match lang {
-                Language::Es => "Giroscopio Directo para PC (opcional fuera de Steam Input)",
-                Language::En => "Direct PC Gyro Aiming (optional outside Steam Input)",
-            },
+            t(
+                l,
+                "Giroscopio Directo para PC (opcional fuera de Steam Input)",
+                "Direct PC Gyro Aiming (optional outside Steam Input)",
+            ),
+            Some(gyro_meta),
+            0.0,
             |ui| {
                 ui.label(
-                    RichText::new(match lang {
-                        Language::Es => "En modo DualShock 4 dejalo en 'Desactivado' para que Steam Input controle el giroscopio nativamente. Usá Gyro → Mouse o Gyro → Stick Derecho solo en juegos fuera de Steam o en modo Xbox 360.",
-                        Language::En => "In DualShock 4 mode, leave this Off so Steam Input handles the gyroscope natively. Use Gyro → Mouse or Gyro → Right Stick for non-Steam PC games or Xbox 360 mode.",
-                    })
+                    RichText::new(t(
+                        l,
+                        "En modo DualShock 4 dejalo en 'Desactivado' para que Steam Input controle el giroscopio nativamente. Usá Gyro → Mouse o Gyro → Stick Derecho solo en juegos fuera de Steam o en modo Xbox 360.",
+                        "In DualShock 4 mode, leave this Off so Steam Input handles the gyroscope natively. Use Gyro → Mouse or Gyro → Right Stick for non-Steam PC games or Xbox 360 mode.",
+                    ))
                     .size(12.0)
-                    .color(Color32::from_rgb(175, 184, 200)),
+                    .color(TEXT_SECONDARY),
                 );
-                ui.add_space(8.0);
+                ui.add_space(10.0);
 
-                ui.horizontal(|ui| {
-                    ui.label(match lang { Language::Es => "Modo:", Language::En => "Mode:" });
-                    ui.selectable_value(
+                setting_row(ui, t(l, "Modo", "Mode"), |ui| {
+                    segmented(
+                        ui,
                         &mut self.cfg.gyro_pc_mode,
-                        GyroPcMode::Off,
-                        match lang {
-                            Language::Es => "Desactivado (recomendado en DS4)",
-                            Language::En => "Off (recommended for DS4)",
-                        },
-                    );
-                    ui.selectable_value(&mut self.cfg.gyro_pc_mode, GyroPcMode::Mouse, "Gyro → Mouse");
-                    ui.selectable_value(
-                        &mut self.cfg.gyro_pc_mode,
-                        GyroPcMode::RightStick,
-                        match lang {
-                            Language::Es => "Gyro → Stick Derecho",
-                            Language::En => "Gyro → Right Stick",
-                        },
+                        &[
+                            (GyroPcMode::Off, t(l, "Desactivado (recomendado en DS4)", "Off (recommended for DS4)")),
+                            (GyroPcMode::Mouse, "Gyro → Mouse"),
+                            (GyroPcMode::RightStick, t(l, "Gyro → Stick Derecho", "Gyro → Right Stick")),
+                        ],
+                        &[],
                     );
                 });
 
                 if self.cfg.gyro_pc_mode != GyroPcMode::Off {
-                    ui.add_space(8.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(match lang { Language::Es => "Activar con:", Language::En => "Activate with:" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::LeftTrigger, match lang { Language::Es => "Mantener L2", Language::En => "Hold L2" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::RightTrigger, match lang { Language::Es => "Mantener R2", Language::En => "Hold R2" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::LeftBumper, match lang { Language::Es => "Mantener L1", Language::En => "Hold L1" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::RightBumper, match lang { Language::Es => "Mantener R1", Language::En => "Hold R1" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::AlwaysOn, match lang { Language::Es => "Siempre activo", Language::En => "Always on" });
-                        ui.selectable_value(&mut self.cfg.gyro_trigger, GyroTrigger::ToggleCapture, "Toggle (Star)");
+                    setting_row(ui, t(l, "Activar con", "Activate with"), |ui| {
+                        segmented(
+                            ui,
+                            &mut self.cfg.gyro_trigger,
+                            &[
+                                (GyroTrigger::LeftTrigger, t(l, "Mantener L2", "Hold L2")),
+                                (GyroTrigger::RightTrigger, t(l, "Mantener R2", "Hold R2")),
+                                (GyroTrigger::LeftBumper, t(l, "Mantener L1", "Hold L1")),
+                                (GyroTrigger::RightBumper, t(l, "Mantener R1", "Hold R1")),
+                                (GyroTrigger::AlwaysOn, t(l, "Siempre activo", "Always on")),
+                                (GyroTrigger::ToggleCapture, "Toggle (Star)"),
+                            ],
+                            &[],
+                        );
                     });
-                    ui.add_space(6.0);
-                    ui.add(egui::Slider::new(&mut self.cfg.gyro_sens, 0.2..=4.0).text(match lang { Language::Es => "Sensibilidad", Language::En => "Sensitivity" }));
-                    ui.add(egui::Slider::new(&mut self.cfg.gyro_roll_mix, 0.0..=1.0).text(match lang { Language::Es => "Mezcla Roll en eje X", Language::En => "Roll mix on X axis" }));
-                    ui.add(egui::Slider::new(&mut self.cfg.gyro_deadzone, 0.0..=5.0).text(match lang { Language::Es => "Zona muerta (°/s)", Language::En => "Deadzone (°/s)" }));
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.cfg.invert_x, match lang { Language::Es => "Invertir eje X", Language::En => "Invert X axis" });
-                        ui.checkbox(&mut self.cfg.invert_y, match lang { Language::Es => "Invertir eje Y", Language::En => "Invert Y axis" });
-                        ui.label(if status.gyro_pc_active {
-                            RichText::new(match lang { Language::Es => " · ACTIVO", Language::En => " · ACTIVE" }).color(ACCENT_GREEN).strong()
-                        } else {
-                            RichText::new(match lang { Language::Es => " · en espera", Language::En => " · standby" }).color(TEXT_MUTED)
-                        });
+                    ui.spacing_mut().slider_width = 260.0;
+                    setting_row(ui, t(l, "Sensibilidad", "Sensitivity"), |ui| {
+                        ui.add(egui::Slider::new(&mut self.cfg.gyro_sens, 0.2..=4.0));
+                    });
+                    setting_row(ui, t(l, "Mezcla Roll en eje X", "Roll mix on X axis"), |ui| {
+                        ui.add(egui::Slider::new(&mut self.cfg.gyro_roll_mix, 0.0..=1.0));
+                    });
+                    setting_row(ui, t(l, "Zona muerta (°/s)", "Deadzone (°/s)"), |ui| {
+                        ui.add(egui::Slider::new(&mut self.cfg.gyro_deadzone, 0.0..=5.0));
+                    });
+                    setting_row(ui, t(l, "Inversión", "Inversion"), |ui| {
+                        toggle(ui, &mut self.cfg.invert_x, t(l, "Invertir eje X", "Invert X axis"));
+                        ui.add_space(14.0);
+                        toggle(ui, &mut self.cfg.invert_y, t(l, "Invertir eje Y", "Invert Y axis"));
                     });
                 }
             },
@@ -846,52 +935,115 @@ impl Pro3App {
 
         ui.add_space(12.0);
 
+        // ── DSU server + quick guide ──
         card(
             ui,
-            match lang {
-                Language::Es => "Servidor DSU / Cemuhook y Guía Rápida",
-                Language::En => "DSU / Cemuhook Server & Quick Guide",
-            },
+            t(l, "Servidor DSU / Cemuhook y Guía Rápida", "DSU / Cemuhook Server & Quick Guide"),
+            None,
+            0.0,
             |ui| {
                 ui.horizontal(|ui| {
-                    ui.checkbox(
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    toggle(
+                        ui,
                         &mut self.cfg.dsu_enabled,
-                        match lang {
-                            Language::Es => "Activar servidor UDP DSU",
-                            Language::En => "Enable DSU UDP server",
-                        },
+                        t(l, "Activar servidor UDP DSU", "Enable DSU UDP server"),
                     );
-                    ui.label(match lang { Language::Es => "Puerto:", Language::En => "Port:" });
+                    ui.add_space(18.0);
+                    field_label(ui, t(l, "Puerto", "Port"));
                     ui.add(egui::DragValue::new(&mut self.cfg.dsu_port).range(1024..=65535));
                 });
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new(match lang {
-                        Language::Es => "• Steam: Parámetros → Mando → Activar Steam Input para mandos de PlayStation.\n• Dolphin: Mandos → Fuentes de entrada alternativas → 127.0.0.1 : 26760.\n• Cemu: Opciones → Entrada → API: DSUController o Motion Source → 127.0.0.1 : 26760.\n• Ryujinx / Yuzu / Eden: Controles → Movimiento → CemuHookUDP → 127.0.0.1 : 26760.\n• Volver al modo XInput de fábrica: cerrá esta app y desenchufá/volvé a enchufar el dongle.",
-                        Language::En => "• Steam: Settings → Controller → Enable Steam Input for PlayStation controllers.\n• Dolphin: Controllers → Alternate Input Sources → 127.0.0.1 : 26760.\n• Cemu: Options → Input Settings → API: DSUController or Motion Source → 127.0.0.1 : 26760.\n• Ryujinx / Yuzu / Eden: Controls → Motion → Use CemuHookUDP → 127.0.0.1 : 26760.\n• Restore stock XInput mode: exit this app and unplug/replug the USB dongle.",
-                    })
-                    .size(12.0)
-                    .color(Color32::from_rgb(175, 184, 200)),
-                );
+                ui.add_space(12.0);
+                hairline(ui);
+                ui.add_space(10.0);
+
+                let addr = format!("127.0.0.1 : {}", self.cfg.dsu_port);
+                let rows: [(&str, String); 5] = [
+                    (
+                        "Steam",
+                        t(
+                            l,
+                            "Parámetros → Mando → Activar Steam Input para mandos de PlayStation.",
+                            "Settings → Controller → Enable Steam Input for PlayStation controllers.",
+                        )
+                        .to_string(),
+                    ),
+                    (
+                        "Dolphin",
+                        format!(
+                            "{} → {addr}",
+                            t(l, "Mandos → Fuentes de entrada alternativas", "Controllers → Alternate Input Sources")
+                        ),
+                    ),
+                    (
+                        "Cemu",
+                        format!(
+                            "{} → {addr}",
+                            t(
+                                l,
+                                "Opciones → Entrada → API: DSUController o Motion Source",
+                                "Options → Input Settings → API: DSUController or Motion Source"
+                            )
+                        ),
+                    ),
+                    (
+                        "Ryujinx / Yuzu / Eden",
+                        format!(
+                            "{} → {addr}",
+                            t(l, "Controles → Movimiento → CemuHookUDP", "Controls → Motion → Use CemuHookUDP")
+                        ),
+                    ),
+                    (
+                        t(l, "XInput de fábrica", "Stock XInput"),
+                        t(
+                            l,
+                            "Cerrá esta app y desenchufá/volvé a enchufar el dongle.",
+                            "Exit this app and unplug/replug the USB dongle.",
+                        )
+                        .to_string(),
+                    ),
+                ];
+                for (name, desc) in rows.iter() {
+                    ui.horizontal_top(|ui| {
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(150.0, 18.0),
+                            Layout::left_to_right(Align::Center),
+                            |ui| {
+                                ui.label(RichText::new(*name).size(12.5).strong().color(TEXT_PRIMARY));
+                            },
+                        );
+                        ui.add(
+                            egui::Label::new(RichText::new(desc).size(12.0).color(TEXT_SECONDARY))
+                                .wrap(),
+                        );
+                    });
+                }
             },
         );
     }
 }
 
-/// Renders the embedded studio SVG of the 8BitDo Pro 3 (640x430) with live glowing interactive overlays.
+// ═══════════════════════════════════════════════════════════════════════════
+// Controller visualizer
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Renders the embedded 8BitDo Pro 3 SVG (viewBox 640x430) with live, soft-glowing overlays
+/// anchored on the exact button coordinates. Designed to read cleanly over a line-art outline.
 fn draw_pro3_controller(
     ui: &mut egui::Ui,
     tex: Option<&egui::TextureHandle>,
     st: &TelemetryState,
     rumble_l: u8,
     rumble_r: u8,
+    max_h: f32,
 ) {
     let avail_w = ui.available_width();
-    let w = avail_w.min(480.0);
-    let top_pad = 26.0;
+    let top_pad = 30.0;
+    let w = avail_w
+        .min(((max_h - top_pad - 4.0) * (640.0 / 430.0)).max(300.0))
+        .min(560.0);
     let svg_h = w * (430.0 / 640.0);
-    let total_h = svg_h + top_pad;
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, total_h), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, svg_h + top_pad), Sense::hover());
     let p = ui.painter();
 
     let scale = w / 640.0;
@@ -899,367 +1051,825 @@ fn draw_pro3_controller(
     let oy = rect.top() + top_pad;
     let pt = |x: f32, y: f32| Pos2::new(ox + x * scale, oy + y * scale);
     let sc = |v: f32| v * scale;
-
     let btns = st.btns;
+    let on = |mask: u32| (btns & mask) != 0;
 
-    // 1) L2 / R2 Analog Trigger Bars right above the shoulders
-    let l2_frac = st.l2 as f32 / 255.0;
-    let r2_frac = st.r2 as f32 / 255.0;
-    let l2_rect = Rect::from_min_max(
-        Pos2::new(ox + 92.0 * scale, rect.top() + 2.0),
-        Pos2::new(ox + 230.0 * scale, rect.top() + 22.0),
+    // 1) L2 / R2 analog trigger bars — thin rails right above the shoulders.
+    trigger_rail(
+        p,
+        ox + 92.0 * scale,
+        ox + 230.0 * scale,
+        rect.top() + 4.0,
+        "L2",
+        st.l2,
+        on(BTN_L2_DIG),
+        false,
     );
-    let r2_rect = Rect::from_min_max(
-        Pos2::new(ox + 410.0 * scale, rect.top() + 2.0),
-        Pos2::new(ox + 548.0 * scale, rect.top() + 22.0),
+    trigger_rail(
+        p,
+        ox + 410.0 * scale,
+        ox + 548.0 * scale,
+        rect.top() + 4.0,
+        "R2",
+        st.r2,
+        on(BTN_R2_DIG),
+        true,
     );
-    p.rect_filled(l2_rect, CornerRadius::same(6), Color32::from_rgb(16, 20, 32));
-    p.rect_filled(r2_rect, CornerRadius::same(6), Color32::from_rgb(16, 20, 32));
-    if l2_frac > 0.01 {
-        p.rect_filled(
-            Rect::from_min_max(
-                l2_rect.min,
-                Pos2::new(l2_rect.left() + l2_rect.width() * l2_frac, l2_rect.bottom()),
-            ),
-            CornerRadius::same(5),
-            ACCENT_CYAN,
-        );
-    }
-    if r2_frac > 0.01 {
-        p.rect_filled(
-            Rect::from_min_max(
-                Pos2::new(r2_rect.right() - r2_rect.width() * r2_frac, r2_rect.top()),
-                r2_rect.max,
-            ),
-            CornerRadius::same(5),
-            ACCENT_CORAL,
-        );
-    }
-    p.rect_stroke(l2_rect, CornerRadius::same(6), Stroke::new(1.2, Color32::from_rgb(56, 66, 94)), egui::StrokeKind::Outside);
-    p.rect_stroke(r2_rect, CornerRadius::same(6), Stroke::new(1.2, Color32::from_rgb(56, 66, 94)), egui::StrokeKind::Outside);
-    p.text(l2_rect.center(), Align2::CENTER_CENTER, format!("L2  {:3}", st.l2), FontId::proportional(11.5), Color32::WHITE);
-    p.text(r2_rect.center(), Align2::CENTER_CENTER, format!("R2  {:3}", st.r2), FontId::proportional(11.5), Color32::WHITE);
 
-    // 2) Embedded 8BitDo Pro 3 SVG texture
+    // 2) Rumble halos sit *behind* the outline so the line art stays crisp.
+    for (val, cx) in [(rumble_l, 112.0), (rumble_r, 528.0)] {
+        if val > 0 {
+            let k = val as f32 / 255.0;
+            let c = pt(cx, 318.0);
+            for (rr, a) in [(78.0, 10.0), (60.0, 20.0), (44.0, 34.0), (28.0, 48.0)] {
+                p.circle_filled(c, sc(rr), with_alpha(ACCENT_AMBER, (a * k) as u8));
+            }
+        }
+    }
+
+    // 3) Controller artwork.
     let img_rect = Rect::from_min_size(Pos2::new(ox, oy), Vec2::new(640.0 * scale, 430.0 * scale));
-    if let Some(t) = tex {
+    if let Some(tx) = tex {
         p.image(
-            t.id(),
+            tx.id(),
             img_rect,
             Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             Color32::WHITE,
         );
     }
 
-    // 3) Rumble glow halos on left / right grips
-    if rumble_l > 0 {
-        let a = ((rumble_l as f32 / 255.0) * 115.0) as u8;
-        p.circle_filled(
-            pt(112.0, 326.0),
-            sc(64.0),
-            Color32::from_rgba_unmultiplied(ACCENT_AMBER.r(), ACCENT_AMBER.g(), ACCENT_AMBER.b(), a),
-        );
+    // 4) L1 / R1 bumpers.
+    if on(BTN_L1) {
+        glow_rect(p, Rect::from_min_max(pt(82.0, 56.0), pt(208.0, 78.0)), sc(11.0), ACCENT_CYAN, scale);
     }
-    if rumble_r > 0 {
-        let a = ((rumble_r as f32 / 255.0) * 115.0) as u8;
-        p.circle_filled(
-            pt(528.0, 326.0),
-            sc(64.0),
-            Color32::from_rgba_unmultiplied(ACCENT_AMBER.r(), ACCENT_AMBER.g(), ACCENT_AMBER.b(), a),
-        );
+    if on(BTN_R1) {
+        glow_rect(p, Rect::from_min_max(pt(432.0, 56.0), pt(558.0, 78.0)), sc(11.0), ACCENT_CYAN, scale);
     }
 
-    // 4) L1 / R1 Bumper Glow Overlays
-    if (btns & BTN_L1) != 0 {
-        let r = Rect::from_min_max(pt(82.0, 56.0), pt(208.0, 78.0));
-        p.rect_filled(r, CornerRadius::same(7), Color32::from_rgba_unmultiplied(56, 189, 248, 170));
-    }
-    if (btns & BTN_R1) != 0 {
-        let r = Rect::from_min_max(pt(432.0, 56.0), pt(558.0, 78.0));
-        p.rect_filled(r, CornerRadius::same(7), Color32::from_rgba_unmultiplied(56, 189, 248, 170));
-    }
-
-    // 5) Cross D-Pad Directional Highlights
-    let d_glow = Color32::from_rgba_unmultiplied(56, 189, 248, 190);
-    if (btns & BTN_DUP) != 0 {
-        p.rect_filled(Rect::from_min_max(pt(137.0, 118.0), pt(167.0, 152.0)), CornerRadius::same(4), d_glow);
-    }
-    if (btns & BTN_DDOWN) != 0 {
-        p.rect_filled(Rect::from_min_max(pt(137.0, 176.0), pt(167.0, 210.0)), CornerRadius::same(4), d_glow);
-    }
-    if (btns & BTN_DLEFT) != 0 {
-        p.rect_filled(Rect::from_min_max(pt(106.0, 149.0), pt(140.0, 179.0)), CornerRadius::same(4), d_glow);
-    }
-    if (btns & BTN_DRIGHT) != 0 {
-        p.rect_filled(Rect::from_min_max(pt(164.0, 149.0), pt(198.0, 179.0)), CornerRadius::same(4), d_glow);
-    }
-
-    // 6) Face Button Luminous Halos
-    let glow_circle = |pos: Pos2, radius: f32, col: Color32| {
-        p.circle_filled(
-            pos,
-            radius * 1.38,
-            Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 85),
-        );
-        p.circle_filled(
-            pos,
-            radius,
-            Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 155),
-        );
-        p.circle_stroke(pos, radius, Stroke::new(2.2, Color32::WHITE));
-    };
-    if (btns & BTN_NORTH) != 0 { glow_circle(pt(488.0, 124.0), sc(20.0), ACCENT_CYAN); }
-    if (btns & BTN_WEST) != 0  { glow_circle(pt(440.0, 164.0), sc(20.0), ACCENT_CYAN); }
-    if (btns & BTN_EAST) != 0  { glow_circle(pt(536.0, 164.0), sc(20.0), ACCENT_GREEN); }
-    if (btns & BTN_SOUTH) != 0 { glow_circle(pt(488.0, 204.0), sc(20.0), ACCENT_CORAL); }
-
-    // 7) -select / +start / Star / Home Overlays
-    if (btns & BTN_MINUS) != 0 {
-        p.rect_filled(
-            Rect::from_min_max(pt(266.0, 149.0), pt(314.0, 167.0)),
-            CornerRadius::same(7),
-            Color32::from_rgba_unmultiplied(56, 189, 248, 200),
-        );
-    }
-    if (btns & BTN_PLUS) != 0 {
-        p.rect_filled(
-            Rect::from_min_max(pt(326.0, 149.0), pt(374.0, 167.0)),
-            CornerRadius::same(7),
-            Color32::from_rgba_unmultiplied(56, 189, 248, 200),
-        );
-    }
-    if (btns & BTN_CAPTURE) != 0 {
-        glow_circle(pt(152.0, 242.0), sc(13.0), ACCENT_AMBER);
-    }
-    if (btns & BTN_HOME) != 0 {
-        glow_circle(pt(488.0, 242.0), sc(14.0), ACCENT_VIOLET);
-    }
-
-    // 8) Live Animated Analog Sticks
-    let draw_stick_overlay = |cx: f32, cy: f32, x: u8, y: u8, clicked: bool| {
-        let center = pt(cx, cy);
-        let nx = ((x as f32) - 127.5) / 127.5;
-        let ny = ((y as f32) - 127.5) / 127.5;
-        let moved = nx.abs() > 0.04 || ny.abs() > 0.04;
-        if moved || clicked {
-            p.circle_filled(center, sc(36.0), Color32::from_rgb(33, 35, 84));
-            let travel = sc(16.0);
-            let knob = Pos2::new(center.x + nx * travel, center.y + ny * travel);
-            p.circle_filled(
-                knob,
-                sc(27.0),
-                if clicked {
-                    Color32::from_rgb(48, 198, 146)
-                } else {
-                    Color32::from_rgb(218, 224, 236)
-                },
-            );
-            p.circle_stroke(
-                knob,
-                sc(27.0),
-                Stroke::new(2.0, if clicked { Color32::WHITE } else { ACCENT_CYAN }),
-            );
-            p.circle_filled(
-                knob,
-                sc(18.0),
-                if clicked {
-                    Color32::from_rgb(32, 160, 118)
-                } else {
-                    Color32::from_rgb(196, 204, 218)
-                },
-            );
+    // 5) D-Pad arms around (152,164).
+    let dpad = [
+        (BTN_DUP, (137.0, 118.0, 167.0, 152.0)),
+        (BTN_DDOWN, (137.0, 176.0, 167.0, 210.0)),
+        (BTN_DLEFT, (106.0, 149.0, 140.0, 179.0)),
+        (BTN_DRIGHT, (164.0, 149.0, 198.0, 179.0)),
+    ];
+    for (mask, (x0, y0, x1, y1)) in dpad {
+        if on(mask) {
+            glow_rect(p, Rect::from_min_max(pt(x0, y0), pt(x1, y1)), sc(5.0), ACCENT_CYAN, scale);
         }
+    }
+
+    // 6) Face buttons — Xbox-like hue mapping on the refined palette.
+    let face = [
+        (BTN_NORTH, (488.0, 124.0), ACCENT_AMBER),
+        (BTN_WEST, (440.0, 164.0), ACCENT_CYAN),
+        (BTN_EAST, (536.0, 164.0), ACCENT_CORAL),
+        (BTN_SOUTH, (488.0, 204.0), ACCENT_GREEN),
+    ];
+    for (mask, (x, y), col) in face {
+        if on(mask) {
+            glow_circle(p, pt(x, y), sc(19.0), col);
+        }
+    }
+
+    // 7) -select / +start / Star / Home.
+    if on(BTN_MINUS) {
+        glow_rect(p, Rect::from_min_max(pt(268.0, 150.0), pt(312.0, 166.0)), sc(8.0), ACCENT_CYAN, scale);
+    }
+    if on(BTN_PLUS) {
+        glow_rect(p, Rect::from_min_max(pt(328.0, 150.0), pt(372.0, 166.0)), sc(8.0), ACCENT_CYAN, scale);
+    }
+    if on(BTN_CAPTURE) {
+        glow_circle(p, pt(152.0, 242.0), sc(13.0), ACCENT_AMBER);
+    }
+    if on(BTN_HOME) {
+        glow_circle(p, pt(488.0, 242.0), sc(14.0), ACCENT_VIOLET);
+    }
+
+    // 8) Analog sticks — dark well, faint crosshair, crisp moving ring + dot.
+    let stick = |cx: f32, cy: f32, x: u8, y: u8, clicked: bool| {
+        let c = pt(cx, cy);
+        let mut nx = (x as f32 - 127.5) / 127.5;
+        let mut ny = (y as f32 - 127.5) / 127.5;
+        let mag = (nx * nx + ny * ny).sqrt();
+        if mag > 1.0 {
+            nx /= mag;
+            ny /= mag;
+        }
+        let moved = mag > 0.06;
+        let well_r = sc(31.0);
+        let col = if clicked {
+            ACCENT_GREEN
+        } else if moved {
+            ACCENT_CYAN
+        } else {
+            Color32::from_rgb(118, 128, 150)
+        };
+
+        if clicked {
+            for (e, a) in [(9.0, 14u8), (5.0, 30), (2.0, 60)] {
+                p.circle_filled(c, well_r + sc(e), with_alpha(ACCENT_GREEN, a));
+            }
+        }
+        p.circle_filled(c, well_r, Color32::from_rgba_unmultiplied(10, 12, 18, 205));
+        p.circle_stroke(
+            c,
+            well_r,
+            Stroke::new(1.0, if clicked { ACCENT_GREEN } else { with_alpha(TEXT_SECONDARY, 70) }),
+        );
+        let ch = with_alpha(TEXT_SECONDARY, 26);
+        p.line_segment([Pos2::new(c.x - well_r + sc(6.0), c.y), Pos2::new(c.x + well_r - sc(6.0), c.y)], Stroke::new(1.0, ch));
+        p.line_segment([Pos2::new(c.x, c.y - well_r + sc(6.0)), Pos2::new(c.x, c.y + well_r - sc(6.0))], Stroke::new(1.0, ch));
+
+        let travel = well_r - sc(10.0);
+        let knob = Pos2::new(c.x + nx * travel, c.y + ny * travel);
+        if moved {
+            p.line_segment([c, knob], Stroke::new(1.2, with_alpha(col, 110)));
+            p.circle_filled(knob, sc(14.0), with_alpha(col, 34));
+        }
+        p.circle_stroke(knob, sc(8.5), Stroke::new(1.8, col));
+        p.circle_filled(knob, sc(3.2).max(2.0), col);
     };
-    draw_stick_overlay(234.0, 240.0, st.lx, st.ly, (btns & BTN_L3) != 0);
-    draw_stick_overlay(406.0, 240.0, st.rx, st.ry, (btns & BTN_R3) != 0);
+    stick(234.0, 240.0, st.lx, st.ly, on(BTN_L3));
+    stick(406.0, 240.0, st.rx, st.ry, on(BTN_R3));
 
-    // 9) PL / PR Rear Paddle Badges
-    let p1_on = (btns & BTN_P1) != 0;
-    let p2_on = (btns & BTN_P2) != 0;
-    let pl_rect = Rect::from_min_max(pt(242.0, 326.0), pt(310.0, 356.0));
-    let pr_rect = Rect::from_min_max(pt(330.0, 326.0), pt(398.0, 356.0));
-    p.rect_filled(pl_rect, CornerRadius::same(8), if p1_on { ACCENT_GREEN } else { Color32::from_rgb(22, 28, 44) });
-    p.rect_stroke(pl_rect, CornerRadius::same(8), Stroke::new(1.3, if p1_on { ACCENT_GREEN } else { Color32::from_rgb(76, 94, 148) }), egui::StrokeKind::Outside);
-    p.text(pl_rect.center(), Align2::CENTER_CENTER, "PL", FontId::proportional(sc(14.0)), if p1_on { Color32::BLACK } else { Color32::from_rgb(185, 198, 232) });
-
-    p.rect_filled(pr_rect, CornerRadius::same(8), if p2_on { ACCENT_GREEN } else { Color32::from_rgb(22, 28, 44) });
-    p.rect_stroke(pr_rect, CornerRadius::same(8), Stroke::new(1.3, if p2_on { ACCENT_GREEN } else { Color32::from_rgb(76, 94, 148) }), egui::StrokeKind::Outside);
-    p.text(pr_rect.center(), Align2::CENTER_CENTER, "PR", FontId::proportional(sc(14.0)), if p2_on { Color32::BLACK } else { Color32::from_rgb(185, 198, 232) });
+    // 9) PL / PR rear paddle pills below the centre arch.
+    let pill = |cx: f32, cy: f32, text: &str, active: bool| {
+        let size = Vec2::new(sc(52.0).max(38.0), sc(22.0).max(16.0));
+        let r = Rect::from_center_size(pt(cx, cy), size);
+        let cr = CornerRadius::same((size.y * 0.5) as u8);
+        if active {
+            for (e, a) in [(6.0, 16u8), (3.0, 36)] {
+                p.rect_filled(r.expand(e), CornerRadius::same((size.y * 0.5 + e) as u8), with_alpha(ACCENT_GREEN, a));
+            }
+            p.rect_filled(r, cr, ACCENT_GREEN);
+        } else {
+            p.rect_filled(r, cr, Color32::from_rgba_unmultiplied(16, 19, 28, 225));
+            p.rect_stroke(r, cr, Stroke::new(1.0, STROKE_STRONG), StrokeKind::Inside);
+        }
+        p.text(
+            r.center(),
+            Align2::CENTER_CENTER,
+            text,
+            FontId::proportional((sc(12.5)).max(10.0)),
+            if active { BG_CANVAS } else { TEXT_SECONDARY },
+        );
+    };
+    pill(276.0, 341.0, "PL", on(BTN_P1));
+    pill(364.0, 341.0, "PR", on(BTN_P2));
 }
 
-/// Live artificial horizon / tilt indicator driven by 3-axis accelerometer + yaw arc.
-fn draw_horizon_gauge(ui: &mut egui::Ui, ax: f32, ay: f32, az: f32, yaw_dps: f32) {
+/// Thin analog trigger rail with label + tabular value, mirrored for the right trigger.
+#[allow(clippy::too_many_arguments)]
+fn trigger_rail(p: &Painter, x0: f32, x1: f32, top: f32, label: &str, value: u8, digital: bool, mirror: bool) {
+    let frac = value as f32 / 255.0;
+    let label_col = if digital || value > 8 { TEXT_PRIMARY } else { TEXT_MUTED };
+    let (la, va, lx, vx) = if mirror {
+        (Align2::RIGHT_CENTER, Align2::LEFT_CENTER, x1, x0)
+    } else {
+        (Align2::LEFT_CENTER, Align2::RIGHT_CENTER, x0, x1)
+    };
+    p.text(Pos2::new(lx, top + 6.0), la, label, FontId::proportional(11.0), label_col);
+    p.text(
+        Pos2::new(vx, top + 6.0),
+        va,
+        format!("{value:>3}"),
+        FontId::monospace(10.5),
+        if value > 8 { ACCENT_CYAN } else { TEXT_MUTED },
+    );
+
+    let track = Rect::from_min_max(Pos2::new(x0, top + 15.0), Pos2::new(x1, top + 18.0));
+    p.rect_filled(track, CornerRadius::same(2), BG_RAISED);
+    if frac > 0.01 {
+        let fill = if mirror {
+            Rect::from_min_max(Pos2::new(x1 - track.width() * frac, track.top()), track.max)
+        } else {
+            Rect::from_min_max(track.min, Pos2::new(x0 + track.width() * frac, track.bottom()))
+        };
+        p.rect_filled(fill.expand(2.5), CornerRadius::same(4), with_alpha(ACCENT_CYAN, 30));
+        p.rect_filled(fill, CornerRadius::same(2), ACCENT_CYAN);
+        let tip = if mirror { fill.left_center() } else { fill.right_center() };
+        p.circle_filled(tip, 3.0, Color32::WHITE);
+    }
+}
+
+fn glow_circle(p: &Painter, c: Pos2, r: f32, col: Color32) {
+    p.circle_filled(c, r * 1.9, with_alpha(col, 7));
+    p.circle_filled(c, r * 1.5, with_alpha(col, 16));
+    p.circle_filled(c, r * 1.2, with_alpha(col, 34));
+    p.circle_filled(c, r, with_alpha(col, 140));
+    p.circle_stroke(c, r, Stroke::new(1.6, col));
+    p.circle_filled(c, r * 0.32, with_alpha(Color32::WHITE, 110));
+}
+
+fn glow_rect(p: &Painter, rect: Rect, radius: f32, col: Color32, scale: f32) {
+    for (e, a) in [(9.0, 7u8), (5.5, 16), (2.5, 36)] {
+        let e = e * scale.max(0.6);
+        p.rect_filled(rect.expand(e), CornerRadius::same((radius + e) as u8), with_alpha(col, a));
+    }
+    let cr = CornerRadius::same(radius as u8);
+    p.rect_filled(rect, cr, with_alpha(col, 150));
+    p.rect_stroke(rect, cr, Stroke::new(1.4, col), StrokeKind::Inside);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Gyroscope horizon gauge
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Artificial horizon driven by the 3-axis accelerometer, with roll pointer, pitch ladder,
+/// degree ticks and a yaw-rate arc on the outer ring.
+fn draw_horizon_gauge(ui: &mut egui::Ui, ax: f32, ay: f32, az: f32, yaw_dps: f32, size: f32) {
     ui.vertical_centered(|ui| {
-        let size = 122.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
         let p = ui.painter();
-        let center = rect.center();
-        let r = size * 0.46;
+        let c = rect.center();
+        let r = size * 0.5 - 5.0; // outer ring (yaw arc / ticks)
+        let face_r = r - 10.0; // attitude face
 
-        p.circle_filled(center, r, Color32::from_rgb(13, 17, 26));
-        p.circle_stroke(center, r, Stroke::new(1.6, Color32::from_rgb(50, 60, 84)));
+        // Bezel + face
+        p.circle_filled(c, r, BG_INSET);
+        p.circle_stroke(c, r, Stroke::new(1.0, STROKE));
+        p.circle_filled(c, face_r, Color32::from_rgb(16, 20, 30));
 
-        let roll_rad = ax.atan2(ay.max(0.05)).clamp(-1.1, 1.1);
-        let pitch_rad = az.atan2((ax * ax + ay * ay).sqrt().max(0.05)).clamp(-1.0, 1.0);
-        let pitch_px = pitch_rad * (r * 0.65);
+        let roll = ax.atan2(ay.max(0.05)).clamp(-1.1, 1.1);
+        let pitch = az.atan2((ax * ax + ay * ay).sqrt().max(0.05)).clamp(-1.0, 1.0);
+        let k = face_r * 0.65;
+        let pitch_px = pitch * k;
+        let d = Vec2::new(roll.cos(), roll.sin()); // along horizon
+        let n = Vec2::new(-roll.sin(), roll.cos()); // toward ground
+        let mid = c + n * pitch_px;
 
-        let cos_r = roll_rad.cos();
-        let sin_r = roll_rad.sin();
-        let half_len = r * 0.78;
-        let mid = Pos2::new(center.x - sin_r * pitch_px, center.y + cos_r * pitch_px);
-        let p1 = Pos2::new(mid.x - cos_r * half_len, mid.y - sin_r * half_len);
-        let p2 = Pos2::new(mid.x + cos_r * half_len, mid.y + sin_r * half_len);
+        // Ground fill: circular segment below the horizon (convex → sorted circle points).
+        let mut pts: Vec<Pos2> = (0..96)
+            .map(|i| {
+                let a = i as f32 / 96.0 * TAU;
+                c + Vec2::new(a.cos(), a.sin()) * face_r
+            })
+            .filter(|q| (*q - mid).dot(n) > 0.0)
+            .collect();
+        let m = mid - c;
+        let b = m.dot(d);
+        let disc = b * b - (m.length_sq() - face_r * face_r);
+        let mut ends = None;
+        if disc > 0.0 {
+            let s = disc.sqrt();
+            let e1 = mid + d * (-b - s);
+            let e2 = mid + d * (-b + s);
+            pts.push(e1);
+            pts.push(e2);
+            ends = Some((e1, e2));
+        }
+        pts.sort_by(|a, bb| {
+            let aa = (a.y - c.y).atan2(a.x - c.x);
+            let ab = (bb.y - c.y).atan2(bb.x - c.x);
+            aa.partial_cmp(&ab).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        if pts.len() >= 3 {
+            p.add(Shape::convex_polygon(
+                pts,
+                lerp_color(Color32::from_rgb(16, 20, 30), ACCENT_CYAN, 0.13),
+                Stroke::NONE,
+            ));
+        }
 
-        p.line_segment([p1, p2], Stroke::new(2.4, ACCENT_CYAN));
-        p.circle_stroke(center, 5.0, Stroke::new(1.5, ACCENT_AMBER));
-        p.line_segment(
-            [Pos2::new(center.x - 14.0, center.y), Pos2::new(center.x - 6.0, center.y)],
-            Stroke::new(1.5, ACCENT_AMBER),
-        );
-        p.line_segment(
-            [Pos2::new(center.x + 6.0, center.y), Pos2::new(center.x + 14.0, center.y)],
-            Stroke::new(1.5, ACCENT_AMBER),
-        );
+        // Inner concentric guide ring
+        p.circle_stroke(c, face_r * 0.55, Stroke::new(1.0, with_alpha(TEXT_SECONDARY, 22)));
 
-        let yaw_angle = -std::f32::consts::FRAC_PI_2 - (yaw_dps / 240.0).clamp(-1.0, 1.0) * 1.1;
-        let yaw_dot = Pos2::new(
-            center.x + yaw_angle.cos() * (r + 1.0),
-            center.y + yaw_angle.sin() * (r + 1.0),
-        );
-        p.circle_filled(yaw_dot, 4.2, ACCENT_VIOLET);
+        // Pitch ladder (±10°, ±20°)
+        let step = 10f32.to_radians() * k;
+        for i in [-2i32, -1, 1, 2] {
+            let o = mid + n * (i as f32 * step);
+            if (o - c).length() < face_r - 8.0 {
+                let half = if i.abs() == 1 { face_r * 0.2 } else { face_r * 0.12 };
+                p.line_segment([o - d * half, o + d * half], Stroke::new(1.0, with_alpha(TEXT_PRIMARY, 46)));
+            }
+        }
+
+        // Horizon line
+        if let Some((e1, e2)) = ends {
+            p.line_segment([e1, e2], Stroke::new(1.8, ACCENT_CYAN));
+        }
+        p.circle_stroke(c, face_r, Stroke::new(1.0, STROKE_STRONG));
+
+        // Degree ticks every 15° (major every 45°)
+        for deg in (0..360).step_by(15) {
+            let a = (deg as f32).to_radians() - FRAC_PI_2;
+            let u = Vec2::new(a.cos(), a.sin());
+            let major = deg % 45 == 0;
+            let len = if major { 5.0 } else { 2.5 };
+            let col = if major { Color32::from_rgb(92, 102, 126) } else { Color32::from_rgb(52, 60, 80) };
+            p.line_segment([c + u * (r - 2.0), c + u * (r - 2.0 - len)], Stroke::new(1.0, col));
+        }
+
+        // Roll pointer: small triangle riding the face edge
+        let ra = roll - FRAC_PI_2;
+        let u = Vec2::new(ra.cos(), ra.sin());
+        let perp = Vec2::new(-u.y, u.x);
+        let tip = c + u * (face_r - 1.0);
+        let base = c + u * (face_r - 8.0);
+        p.add(Shape::convex_polygon(
+            vec![tip, base + perp * 4.0, base - perp * 4.0],
+            ACCENT_CYAN,
+            Stroke::NONE,
+        ));
+
+        // Yaw-rate arc on the outer ring
+        let norm = (yaw_dps / 240.0).clamp(-1.0, 1.0);
+        let start = -FRAC_PI_2;
+        let sweep = -norm * 1.3;
+        if sweep.abs() > 0.02 {
+            let segs = 32;
+            let arc: Vec<Pos2> = (0..=segs)
+                .map(|i| {
+                    let a = start + sweep * (i as f32 / segs as f32);
+                    c + Vec2::new(a.cos(), a.sin()) * (r - 0.5)
+                })
+                .collect();
+            p.add(Shape::line(arc, Stroke::new(2.4, ACCENT_VIOLET)));
+        }
+        let ya = start + sweep;
+        p.circle_filled(c + Vec2::new(ya.cos(), ya.sin()) * (r - 0.5), 3.4, ACCENT_VIOLET);
+
+        // Fixed aircraft reticle
+        let wing = Stroke::new(1.8, ACCENT_AMBER);
+        p.line_segment([Pos2::new(c.x - 18.0, c.y), Pos2::new(c.x - 7.0, c.y)], wing);
+        p.line_segment([Pos2::new(c.x + 7.0, c.y), Pos2::new(c.x + 18.0, c.y)], wing);
+        p.circle_stroke(c, 4.0, Stroke::new(1.5, ACCENT_AMBER));
     });
 }
 
-fn tab_button(ui: &mut egui::Ui, current: &mut Tab, target: Tab, label: &str) {
-    let selected = *current == target;
-    let fill = if selected {
-        Color32::from_rgb(32, 54, 96)
-    } else {
-        Color32::TRANSPARENT
-    };
-    let stroke = if selected {
-        Stroke::new(1.0, Color32::from_rgb(76, 136, 232))
-    } else {
-        Stroke::NONE
-    };
-    let text_col = if selected { TEXT_PRIMARY } else { TEXT_MUTED };
-    if ui
-        .add(
-            egui::Button::new(RichText::new(label).size(13.0).color(text_col))
-                .fill(fill)
-                .stroke(stroke)
-                .corner_radius(CornerRadius::same(7))
-                .min_size(Vec2::new(0.0, 28.0)),
-        )
-        .clicked()
-    {
-        *current = target;
+/// Slim signed bar: label left, centred zero, crisp right-aligned tabular value.
+fn axis_bar(ui: &mut egui::Ui, label: &str, value: f32, max_abs: f32, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
+    let p = ui.painter();
+    let label_w = 40.0;
+    let value_w = 78.0;
+    p.text(
+        Pos2::new(rect.left(), rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(11.5),
+        TEXT_SECONDARY,
+    );
+    p.text(
+        Pos2::new(rect.right(), rect.center().y),
+        Align2::RIGHT_CENTER,
+        format!("{:+7.1} °/s", value),
+        FontId::monospace(11.0),
+        TEXT_PRIMARY,
+    );
+
+    let x0 = rect.left() + label_w;
+    let x1 = (rect.right() - value_w).max(x0 + 20.0);
+    let cy = rect.center().y;
+    let track = Rect::from_min_max(Pos2::new(x0, cy - 1.5), Pos2::new(x1, cy + 1.5));
+    p.rect_filled(track, CornerRadius::same(2), BG_RAISED);
+    let mid_x = track.center().x;
+    p.line_segment(
+        [Pos2::new(mid_x, cy - 5.0), Pos2::new(mid_x, cy + 5.0)],
+        Stroke::new(1.0, Color32::from_rgb(70, 80, 104)),
+    );
+    let norm = (value / max_abs).clamp(-1.0, 1.0);
+    let end_x = mid_x + norm * track.width() * 0.5;
+    if (end_x - mid_x).abs() > 0.5 {
+        let fill = Rect::from_min_max(
+            Pos2::new(mid_x.min(end_x), track.top()),
+            Pos2::new(mid_x.max(end_x), track.bottom()),
+        );
+        p.rect_filled(fill.expand(2.0), CornerRadius::same(3), with_alpha(color, 34));
+        p.rect_filled(fill, CornerRadius::same(2), color);
+        p.circle_filled(Pos2::new(end_x, cy), 3.0, color);
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Widgets & layout primitives
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn with_alpha(c: Color32, a: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
+}
+
+fn ellipsize(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('…');
+        out
+    }
+}
+
+/// Soft card: single 1px hairline stroke, generous padding, optional right-aligned meta.
+fn card(
+    ui: &mut egui::Ui,
+    title: &str,
+    meta: Option<(&str, Color32)>,
+    min_h: f32,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    egui::Frame::default()
+        .fill(BG_CARD)
+        .stroke(Stroke::new(1.0, STROKE))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(egui::Margin::same(16))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if min_h > 0.0 {
+                ui.set_min_height(min_h - 34.0);
+            }
+            if !title.is_empty() {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(title).size(13.0).strong().color(TEXT_PRIMARY));
+                    if let Some((m, col)) = meta {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.label(RichText::new(m).size(11.5).color(TEXT_SECONDARY));
+                            let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+                            ui.painter().circle_filled(r.center(), 3.0, col);
+                        });
+                    }
+                });
+                ui.add_space(10.0);
+            }
+            add_contents(ui);
+        })
+        .response
+}
+
+/// Sleek segmented control with an animated sliding selection thumb.
+fn segmented<T: PartialEq + Copy>(
+    ui: &mut egui::Ui,
+    value: &mut T,
+    options: &[(T, &str)],
+    tips: &[&str],
+) -> bool {
+    let font = FontId::proportional(12.5);
+    let pad_x = 12.0;
+    let h = 28.0;
+    let inset = 3.0;
+    let widths: Vec<f32> = options
+        .iter()
+        .map(|(_, lbl)| {
+            ui.painter()
+                .layout_no_wrap(lbl.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+                + pad_x * 2.0
+        })
+        .collect();
+    let total: f32 = widths.iter().sum::<f32>() + inset * 2.0;
+    let (rect, base) = ui.allocate_exact_size(Vec2::new(total, h), Sense::hover());
+
+    let mut changed = false;
+    let mut segs = Vec::with_capacity(options.len());
+    let mut x = rect.left() + inset;
+    for (i, ((val, _), w)) in options.iter().zip(widths.iter()).enumerate() {
+        let seg = Rect::from_min_size(Pos2::new(x, rect.top() + inset), Vec2::new(*w, h - inset * 2.0));
+        let mut r = ui
+            .interact(seg, base.id.with(i), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        if let Some(tip) = tips.get(i) {
+            if !tip.is_empty() {
+                r = r.on_hover_text(*tip);
+            }
+        }
+        if r.clicked() && *value != *val {
+            *value = *val;
+            changed = true;
+        }
+        segs.push((seg, r.hovered()));
+        x += w;
+    }
+
+    let sel = options.iter().position(|(v, _)| *v == *value).unwrap_or(0);
+    let ctx = ui.ctx().clone();
+    let tx = ctx.animate_value_with_time(base.id.with("thumb_x"), segs[sel].0.left(), 0.14);
+    let tw = ctx.animate_value_with_time(base.id.with("thumb_w"), segs[sel].0.width(), 0.14);
+
+    let p = ui.painter();
+    p.rect_filled(rect, CornerRadius::same(9), BG_INSET);
+    p.rect_stroke(rect, CornerRadius::same(9), Stroke::new(1.0, STROKE), StrokeKind::Inside);
+    for (i, (seg, hovered)) in segs.iter().enumerate() {
+        if *hovered && i != sel {
+            p.rect_filled(*seg, CornerRadius::same(7), Color32::from_rgb(22, 27, 39));
+        }
+    }
+    let thumb = Rect::from_min_size(Pos2::new(tx, rect.top() + inset), Vec2::new(tw, h - inset * 2.0));
+    p.rect_filled(thumb, CornerRadius::same(7), BG_RAISED);
+    p.rect_stroke(thumb, CornerRadius::same(7), Stroke::new(1.0, STROKE_STRONG), StrokeKind::Inside);
+
+    for (i, ((_, lbl), (seg, hovered))) in options.iter().zip(segs.iter()).enumerate() {
+        let col = if i == sel {
+            TEXT_PRIMARY
+        } else if *hovered {
+            TEXT_SECONDARY
+        } else {
+            TEXT_MUTED
+        };
+        p.text(seg.center(), Align2::CENTER_CENTER, *lbl, font.clone(), col);
+    }
+    changed
+}
+
+/// iOS / Fluent style toggle switch with a clickable label.
+fn toggle(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(32.0, 18.0), Sense::click());
+        let lbl = ui.add(
+            egui::Label::new(RichText::new(label).size(12.5).color(TEXT_PRIMARY)).sense(Sense::click()),
+        );
+        if resp.clicked() || lbl.clicked() {
+            *on = !*on;
+            changed = true;
+        }
+        let anim_id = resp.id;
+        resp.on_hover_cursor(CursorIcon::PointingHand);
+        lbl.on_hover_cursor(CursorIcon::PointingHand);
+
+        let tt = ui.ctx().animate_bool(anim_id, *on);
+        let p = ui.painter();
+        let track = lerp_color(Color32::from_rgb(36, 43, 60), Color32::from_rgb(16, 150, 108), tt);
+        p.rect_filled(rect, CornerRadius::same(9), track);
+        if tt < 0.5 {
+            p.rect_stroke(rect, CornerRadius::same(9), Stroke::new(1.0, STROKE_STRONG), StrokeKind::Inside);
+        }
+        let kx = egui::lerp((rect.left() + 9.0)..=(rect.right() - 9.0), tt);
+        p.circle_filled(Pos2::new(kx, rect.center().y), 6.5, Color32::from_rgb(240, 244, 250));
+    });
+    changed
+}
+
+fn solid_button(ui: &mut egui::Ui, text: &str, fill: Color32, fg: Color32, stroke: Stroke) -> egui::Response {
+    ui.add(
+        egui::Button::new(RichText::new(text).size(13.0).strong().color(fg))
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(CornerRadius::same(8))
+            .min_size(Vec2::new(88.0, 32.0)),
+    )
+    .on_hover_cursor(CursorIcon::PointingHand)
+}
+
+fn ghost_button(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Response {
+    ui.add_enabled(
+        enabled,
+        egui::Button::new(RichText::new(text).size(12.5))
+            .corner_radius(CornerRadius::same(8))
+            .min_size(Vec2::new(0.0, 32.0)),
+    )
+}
+
+/// Underline navigation tabs.
+fn tab_bar(ui: &mut egui::Ui, current: &mut Tab, items: &[(Tab, &str)]) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        let font = FontId::proportional(13.0);
+        for (i, (tab, label)) in items.iter().enumerate() {
+            let gw = ui
+                .painter()
+                .layout_no_wrap(label.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x;
+            if i == 0 {
+                ui.add_space(-12.0);
+            }
+            let (rect, resp) = ui.allocate_exact_size(Vec2::new(gw + 24.0, 34.0), Sense::click());
+            let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+            if resp.clicked() {
+                *current = *tab;
+            }
+            let selected = *current == *tab;
+            let col = if selected {
+                TEXT_PRIMARY
+            } else if resp.hovered() {
+                TEXT_SECONDARY
+            } else {
+                TEXT_MUTED
+            };
+            let p = ui.painter();
+            p.text(Pos2::new(rect.center().x, rect.center().y - 1.0), Align2::CENTER_CENTER, *label, font.clone(), col);
+            let ul = Rect::from_min_max(
+                Pos2::new(rect.center().x - gw * 0.5, rect.bottom() - 2.0),
+                Pos2::new(rect.center().x + gw * 0.5, rect.bottom()),
+            );
+            if selected {
+                p.rect_filled(ul.expand2(Vec2::new(0.0, 2.0)), CornerRadius::same(2), with_alpha(ACCENT_CYAN, 30));
+                p.rect_filled(ul, CornerRadius::same(1), ACCENT_CYAN);
+            } else if resp.hovered() {
+                p.rect_filled(ul, CornerRadius::same(1), STROKE_STRONG);
+            }
+        }
+    });
+}
+
+fn strip_item(ui: &mut egui::Ui, label: &str, value: &str, value_col: Color32) -> egui::Response {
+    ui.label(RichText::new(label).size(11.5).color(TEXT_MUTED));
+    ui.label(RichText::new(value).size(11.5).color(value_col))
+}
+
+fn strip_sep(ui: &mut egui::Ui) {
+    ui.add_space(4.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(3.0, 12.0), Sense::hover());
+    ui.painter().circle_filled(r.center(), 1.4, STROKE_STRONG);
+    ui.add_space(4.0);
+}
+
+fn battery_glyph(ui: &mut egui::Ui, pct: u8, known: bool) {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(19.0, 10.0), Sense::hover());
+    let p = ui.painter();
+    let body = Rect::from_min_max(r.min, Pos2::new(r.right() - 2.0, r.bottom()));
+    p.rect_stroke(body, CornerRadius::same(2), Stroke::new(1.0, Color32::from_rgb(92, 102, 126)), StrokeKind::Inside);
+    p.rect_filled(
+        Rect::from_min_max(Pos2::new(body.right(), r.center().y - 2.0), Pos2::new(r.right(), r.center().y + 2.0)),
+        CornerRadius::same(1),
+        Color32::from_rgb(92, 102, 126),
+    );
+    if known {
+        let frac = (pct as f32 / 100.0).clamp(0.0, 1.0);
+        let inner = body.shrink(2.0);
+        let col = if pct < 25 { ACCENT_CORAL } else { ACCENT_GREEN };
+        if frac > 0.0 {
+            p.rect_filled(
+                Rect::from_min_max(inner.min, Pos2::new(inner.left() + inner.width() * frac, inner.bottom())),
+                CornerRadius::same(1),
+                col,
+            );
+        }
+    }
+}
+
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).size(12.0).color(TEXT_MUTED));
+}
+
+fn hairline(ui: &mut egui::Ui) {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().rect_filled(r, CornerRadius::ZERO, STROKE);
+}
+
+fn kv_mono(ui: &mut egui::Ui, key: &str, value: &str) -> egui::Response {
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(Vec2::new(40.0, 16.0), Layout::left_to_right(Align::Center), |ui| {
+            ui.label(RichText::new(key).size(11.5).color(TEXT_MUTED));
+        });
+        ui.label(RichText::new(value).monospace().size(11.0).color(TEXT_SECONDARY));
+    })
+    .response
+}
+
+/// Label column + control, for settings forms.
+fn setting_row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.set_min_height(32.0);
+        ui.allocate_ui_with_layout(Vec2::new(170.0, 28.0), Layout::left_to_right(Align::Center), |ui| {
+            ui.set_min_width(170.0);
+            ui.label(RichText::new(label).size(12.5).color(TEXT_SECONDARY));
+        });
+        add(ui);
+    });
+}
+
+fn option_tile(ui: &mut egui::Ui, accent: Color32, title: &str, desc: &str, desc_col: Color32) {
+    egui::Frame::default()
+        .fill(BG_INSET)
+        .stroke(Stroke::new(1.0, STROKE))
+        .corner_radius(CornerRadius::same(10))
+        .inner_margin(egui::Margin::symmetric(14, 12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let (r, _) = ui.allocate_exact_size(Vec2::new(8.0, 18.0), Sense::hover());
+                ui.painter().circle_filled(r.center(), 3.5, accent);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 3.0;
+                    ui.label(RichText::new(title).size(13.0).strong().color(TEXT_PRIMARY));
+                    ui.add(egui::Label::new(RichText::new(desc).size(12.0).color(desc_col)).wrap());
+                });
+            });
+        });
+}
+
+#[allow(clippy::too_many_arguments)]
 fn paddle_row(
     ui: &mut egui::Ui,
-    label: &str,
+    tag: &str,
+    title: &str,
+    caption: &str,
     pressed: bool,
     id: &str,
     action: &mut PaddleAction,
     lang: Language,
 ) {
-    let dot_color = if pressed {
-        ACCENT_GREEN
-    } else {
-        Color32::from_rgb(58, 66, 84)
-    };
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(11.0), egui::Sense::hover());
-        ui.painter().circle_filled(rect.center(), 5.0, dot_color);
-        ui.label(RichText::new(label).strong().color(TEXT_PRIMARY));
-    });
-    egui::ComboBox::from_id_salt(id)
-        .selected_text(action.label(lang))
-        .width(250.0)
-        .show_ui(ui, |ui| {
-            for &opt in PaddleAction::ALL {
-                ui.selectable_value(action, opt, opt.label(lang));
-            }
-        });
-    ui.label(if pressed {
-        RichText::new(match lang { Language::Es => "PULSADO", Language::En => "PRESSED" })
-            .color(ACCENT_GREEN)
-            .strong()
-    } else {
-        RichText::new("")
-    });
-    ui.end_row();
-}
-
-fn card(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::default()
-        .fill(BG_CARD)
-        .stroke(Stroke::new(1.0, BORDER_CARD))
-        .corner_radius(CornerRadius::same(12))
-        .inner_margin(egui::Margin::same(14))
+        .fill(if pressed { lerp_color(BG_INSET, ACCENT_GREEN, 0.08) } else { BG_INSET })
+        .stroke(Stroke::new(1.0, if pressed { with_alpha(ACCENT_GREEN, 90) } else { STROKE }))
+        .corner_radius(CornerRadius::same(10))
+        .inner_margin(egui::Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new(title).size(13.5).strong().color(TEXT_PRIMARY));
-            ui.add_space(8.0);
-            add_contents(ui);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 12.0;
+                // Live tag pill
+                let (r, _) = ui.allocate_exact_size(Vec2::new(44.0, 26.0), Sense::hover());
+                let p = ui.painter();
+                let cr = CornerRadius::same(13);
+                if pressed {
+                    p.rect_filled(r.expand(3.0), CornerRadius::same(16), with_alpha(ACCENT_GREEN, 30));
+                    p.rect_filled(r, cr, ACCENT_GREEN);
+                } else {
+                    p.rect_filled(r, cr, BG_CARD);
+                    p.rect_stroke(r, cr, Stroke::new(1.0, STROKE_STRONG), StrokeKind::Inside);
+                }
+                p.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    tag,
+                    FontId::proportional(12.5),
+                    if pressed { BG_CANVAS } else { TEXT_SECONDARY },
+                );
+
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.label(RichText::new(title).size(13.0).strong().color(TEXT_PRIMARY));
+                    ui.label(RichText::new(caption).monospace().size(10.5).color(TEXT_MUTED));
+                });
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    egui::ComboBox::from_id_salt(id)
+                        .selected_text(action.label(lang))
+                        .width(240.0)
+                        .show_ui(ui, |ui| {
+                            for &opt in PaddleAction::ALL {
+                                ui.selectable_value(action, opt, opt.label(lang));
+                            }
+                        });
+                    if pressed {
+                        ui.label(
+                            RichText::new(t(lang, "PULSADO", "PRESSED"))
+                                .size(11.0)
+                                .strong()
+                                .color(ACCENT_GREEN),
+                        );
+                    }
+                });
+            });
         });
 }
 
-fn status_pill(ui: &mut egui::Ui, text: &str, bg: Color32, fg: Color32) {
-    egui::Frame::default()
-        .fill(bg)
-        .stroke(Stroke::new(
-            1.0,
-            Color32::from_rgba_unmultiplied(fg.r(), fg.g(), fg.b(), 70),
-        ))
-        .corner_radius(CornerRadius::same(12))
-        .inner_margin(egui::Margin::symmetric(10, 4))
-        .show(ui, |ui| {
-            ui.label(RichText::new(text).size(11.5).strong().color(fg));
-        });
-}
-
-fn draw_signed_bar(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: f32,
-    max_abs: f32,
-    unit: &str,
-    color: Color32,
-) {
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(format!("{label} {:+6.1} {unit}", value))
-                .monospace()
-                .size(11.5)
-                .color(TEXT_PRIMARY),
-        );
-        let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 12.0), egui::Sense::hover());
-        let p = ui.painter();
-        p.rect_filled(rect, CornerRadius::same(4), Color32::from_rgb(13, 16, 24));
-        let mid_x = rect.center().x;
-        p.line_segment(
-            [Pos2::new(mid_x, rect.top()), Pos2::new(mid_x, rect.bottom())],
-            Stroke::new(1.0, Color32::from_rgb(64, 74, 96)),
-        );
-        let norm = (value / max_abs).clamp(-1.0, 1.0);
-        let half = rect.width() * 0.5;
-        let fill_rect = if norm >= 0.0 {
-            Rect::from_min_max(
-                Pos2::new(mid_x, rect.top()),
-                Pos2::new(mid_x + norm * half, rect.bottom()),
-            )
-        } else {
-            Rect::from_min_max(
-                Pos2::new(mid_x + norm * half, rect.top()),
-                Pos2::new(mid_x, rect.bottom()),
-            )
+/// 32-cell live visualisation of the raw button bitmask (bit 31 → 0), PL/PR bits outlined.
+fn bit_strip(ui: &mut egui::Ui, btns: u32) {
+    let cell = Vec2::new(9.0, 16.0);
+    let gap = 3.0;
+    let group_gap = 7.0;
+    let total_w = 32.0 * cell.x + 31.0 * gap + 3.0 * group_gap;
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(total_w + 50.0, cell.y + 14.0), Sense::hover());
+    let p = ui.painter();
+    let mut hovered_bit = None;
+    for i in 0..32u32 {
+        let bit = 31 - i;
+        let x = rect.left() + i as f32 * (cell.x + gap) + (i / 8) as f32 * group_gap;
+        let r = Rect::from_min_size(Pos2::new(x, rect.top()), cell);
+        let set = (btns >> bit) & 1 == 1;
+        let paddle = bit == 25 || bit == 26;
+        let fill = match (set, paddle) {
+            (true, true) => ACCENT_GREEN,
+            (true, false) => ACCENT_CYAN,
+            _ => BG_RAISED,
         };
-        if fill_rect.width() > 0.5 {
-            p.rect_filled(fill_rect, CornerRadius::same(3), color);
+        if set {
+            p.rect_filled(r.expand(2.0), CornerRadius::same(4), with_alpha(fill, 34));
         }
-    });
+        p.rect_filled(r, CornerRadius::same(2), fill);
+        if paddle && !set {
+            p.rect_stroke(r, CornerRadius::same(2), Stroke::new(1.0, with_alpha(ACCENT_GREEN, 140)), StrokeKind::Inside);
+        }
+        if bit % 8 == 7 || bit == 0 {
+            p.text(
+                Pos2::new(r.center().x, r.bottom() + 7.0),
+                Align2::CENTER_CENTER,
+                bit.to_string(),
+                FontId::monospace(9.0),
+                TEXT_MUTED,
+            );
+        }
+        if resp.hovered() {
+            if let Some(pos) = resp.hover_pos() {
+                if r.expand(1.5).contains(pos) {
+                    hovered_bit = Some((bit, set));
+                }
+            }
+        }
+    }
+    if let Some((bit, set)) = hovered_bit {
+        resp.on_hover_text(format!("bit {bit} = {}", set as u8));
+    }
 }
