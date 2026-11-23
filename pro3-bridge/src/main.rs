@@ -5,6 +5,7 @@ mod config;
 mod dsu;
 mod input_sim;
 mod protocol;
+mod setup;
 mod ui;
 mod vigem;
 

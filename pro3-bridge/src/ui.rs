@@ -1,14 +1,15 @@
 use crate::bridge::{BridgeControl, BridgeStatus};
 use crate::config::*;
 use crate::protocol::*;
+use crate::setup::{self, InstallState};
 use eframe::egui::{
     self, Align, Align2, Color32, CornerRadius, CursorIcon, FontId, Layout, Painter, Pos2, Rect,
     RichText, Sense, Shape, Stroke, StrokeKind, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tray_icon::TrayIcon;
 
 pub const PRO3_SVG: &[u8] = include_bytes!("../../assets/8bitdo_pro3.svg");
@@ -64,6 +65,11 @@ pub struct Pro3App {
     force_exit: Arc<AtomicBool>,
     show_close_modal: bool,
     remember_close_choice: bool,
+    show_setup_modal: bool,
+    vigem_installed: bool,
+    dongle_present: bool,
+    last_setup_probe: Instant,
+    install_state: Arc<Mutex<InstallState>>,
 }
 
 impl Pro3App {
@@ -73,6 +79,9 @@ impl Pro3App {
         tray: Option<TrayIcon>,
         force_exit: Arc<AtomicBool>,
     ) -> Self {
+        let vigem_installed = setup::is_vigem_installed();
+        let dongle_present = setup::is_dongle_present();
+        let show_setup_modal = !vigem_installed && cfg.pad_mode != PadMode::None;
         Self {
             ctrl,
             cfg,
@@ -83,6 +92,11 @@ impl Pro3App {
             force_exit,
             show_close_modal: false,
             remember_close_choice: true,
+            show_setup_modal,
+            vigem_installed,
+            dongle_present,
+            last_setup_probe: Instant::now(),
+            install_state: Arc::new(Mutex::new(InstallState::Idle)),
         }
     }
 
@@ -569,14 +583,326 @@ impl eframe::App for Pro3App {
             });
 
         self.render_close_modal(ctx);
+        self.render_setup_modal(ctx);
     }
 }
 
 impl Pro3App {
+    fn refresh_setup_probes(&mut self) {
+        self.vigem_installed = setup::is_vigem_installed();
+        self.dongle_present = setup::is_dongle_present();
+        self.last_setup_probe = Instant::now();
+    }
+
+    fn render_setup_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_setup_modal {
+            return;
+        }
+        if self.last_setup_probe.elapsed() >= Duration::from_millis(1200) {
+            self.refresh_setup_probes();
+        }
+
+        let l = self.cfg.lang;
+        let inst_state = self
+            .install_state
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or(InstallState::Idle);
+        let busy = matches!(
+            inst_state,
+            InstallState::Downloading
+                | InstallState::Verifying
+                | InstallState::RunningInstaller
+        );
+
+        let mut close_now = false;
+        let mut switch_dsu_only = false;
+
+        let modal = egui::Modal::new(egui::Id::new("steam_setup_modal"))
+            .backdrop_color(Color32::from_black_alpha(165))
+            .frame(
+                egui::Frame::default()
+                    .fill(BG_ELEVATED)
+                    .stroke(Stroke::new(1.0, STROKE_STRONG))
+                    .corner_radius(CornerRadius::same(14))
+                    .inner_margin(egui::Margin::same(22)),
+            )
+            .show(ctx, |ui| {
+                ui.set_width(470.0);
+                ui.spacing_mut().item_spacing.y = 6.0;
+
+                ui.label(
+                    RichText::new(t(
+                        l,
+                        "Asistente de configuración para Steam",
+                        "Steam & Driver Setup Assistant",
+                    ))
+                    .size(16.0)
+                    .strong()
+                    .color(TEXT_PRIMARY),
+                );
+                ui.label(
+                    RichText::new(t(
+                        l,
+                        "Revisa los requisitos para usar el giroscopio nativo (DualShock 4) en Steam. Solo se configura una vez.",
+                        "Check the requirements for native DualShock 4 gyro in Steam. This is a one-time setup.",
+                    ))
+                    .size(12.0)
+                    .color(TEXT_MUTED),
+                );
+                ui.add_space(10.0);
+
+                // Step 1: ViGEmBus driver
+                egui::Frame::default()
+                    .fill(BG_INSET)
+                    .stroke(Stroke::new(
+                        1.0,
+                        if self.vigem_installed {
+                            with_alpha(ACCENT_GREEN, 95)
+                        } else {
+                            with_alpha(ACCENT_AMBER, 110)
+                        },
+                    ))
+                    .corner_radius(CornerRadius::same(10))
+                    .inner_margin(egui::Margin::symmetric(14, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            let dot = if self.vigem_installed { ACCENT_GREEN } else { ACCENT_AMBER };
+                            let (r, _) = ui.allocate_exact_size(Vec2::new(8.0, 16.0), Sense::hover());
+                            ui.painter().circle_filled(r.center(), 3.5, dot);
+                            ui.label(
+                                RichText::new(format!("1. Driver ViGEmBus (v{})", setup::VIGEM_VERSION))
+                                    .size(13.0)
+                                    .strong()
+                                    .color(TEXT_PRIMARY),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let (badge, col) = if self.vigem_installed {
+                                    (t(l, "Instalado", "Installed"), ACCENT_GREEN)
+                                } else {
+                                    (t(l, "No instalado", "Missing"), ACCENT_AMBER)
+                                };
+                                ui.label(RichText::new(badge).size(11.5).strong().color(col));
+                            });
+                        });
+                        ui.add_space(3.0);
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(t(
+                                    l,
+                                    "Driver firmado oficial de Nefarius necesario para crear el DualShock 4 virtual en Steam (opcional si solo usas emuladores DSU).",
+                                    "Official signed driver by Nefarius required to create the virtual DualShock 4 in Steam (optional for DSU-only emulators).",
+                                ))
+                                .size(12.0)
+                                .color(TEXT_SECONDARY),
+                            )
+                            .wrap(),
+                        );
+
+                        if !self.vigem_installed {
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 8.0;
+                                let btn_lbl = match &inst_state {
+                                    InstallState::Downloading => t(l, "Descargando...", "Downloading..."),
+                                    InstallState::Verifying => t(l, "Verificando firma...", "Verifying signature..."),
+                                    InstallState::RunningInstaller => t(l, "Instalando...", "Installing..."),
+                                    _ => t(l, "Instalar ViGEmBus", "Install ViGEmBus"),
+                                };
+                                if ui
+                                    .add_enabled(
+                                        !busy,
+                                        egui::Button::new(
+                                            RichText::new(btn_lbl)
+                                                .size(12.5)
+                                                .strong()
+                                                .color(Color32::WHITE),
+                                        )
+                                        .fill(Color32::from_rgb(14, 116, 178))
+                                        .corner_radius(CornerRadius::same(8))
+                                        .min_size(Vec2::new(148.0, 30.0)),
+                                    )
+                                    .on_hover_text(t(
+                                        l,
+                                        "Descarga el instalador oficial de GitHub, verifica su firma digital de Windows y lo ejecuta",
+                                        "Downloads the official GitHub installer, verifies its Windows signature, and launches it",
+                                    ))
+                                    .clicked()
+                                {
+                                    setup::spawn_vigem_installer(self.install_state.clone());
+                                }
+                                if ghost_button(
+                                    ui,
+                                    t(l, "Abrir GitHub oficial", "Open official GitHub"),
+                                    true,
+                                )
+                                .clicked()
+                                {
+                                    setup::open_url(setup::VIGEM_RELEASE_URL);
+                                }
+                            });
+                            if let InstallState::Error(err) = &inst_state {
+                                ui.add_space(4.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(err).size(11.5).color(ACCENT_CORAL),
+                                    )
+                                    .wrap(),
+                                );
+                            } else if matches!(inst_state, InstallState::RunningInstaller) {
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new(t(
+                                        l,
+                                        "Completa el instalador de ViGEmBus en la ventana de Windows; se detectará automáticamente al terminar.",
+                                        "Finish the ViGEmBus installer window; it will be detected automatically once done.",
+                                    ))
+                                    .size(11.5)
+                                    .color(ACCENT_CYAN),
+                                );
+                            }
+                        }
+                    });
+
+                ui.add_space(2.0);
+
+                // Step 2: Steam Input setting
+                option_tile(
+                    ui,
+                    ACCENT_CYAN,
+                    t(l, "2. Activar Steam Input para PlayStation", "2. Enable PlayStation Steam Input"),
+                    t(
+                        l,
+                        "En Steam → Parámetros → Mando, activa «Steam Input para mandos de PlayStation». Luego pulsa Iniciar en esta app y activa el giroscopio en el juego.",
+                        "In Steam → Settings → Controller, enable \"Steam Input for PlayStation controllers\". Then click Start in this app and enable gyro in your game.",
+                    ),
+                    TEXT_SECONDARY,
+                );
+
+                ui.add_space(2.0);
+
+                // Step 3: Dongle presence
+                option_tile(
+                    ui,
+                    if self.dongle_present { ACCENT_GREEN } else { TEXT_MUTED },
+                    if self.dongle_present {
+                        t(l, "3. Dongle USB 2.4 GHz · Detectado", "3. 2.4 GHz USB Dongle · Detected")
+                    } else {
+                        t(l, "3. Dongle USB 2.4 GHz · Esperando conexión", "3. 2.4 GHz USB Dongle · Waiting")
+                    },
+                    t(
+                        l,
+                        "No necesitas HidHide ni drivers extra. Al pulsar Detener o cerrar la app, el dongle vuelve solo a XInput (~6 s).",
+                        "No HidHide or extra drivers needed. Clicking Stop or exiting restores stock XInput automatically (~6 s).",
+                    ),
+                    TEXT_SECONDARY,
+                );
+
+                ui.add_space(12.0);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if self.vigem_installed {
+                        if solid_button(
+                            ui,
+                            t(l, "Listo · Empezar", "All Set · Continue"),
+                            Color32::from_rgb(16, 146, 104),
+                            Color32::WHITE,
+                            Stroke::NONE,
+                        )
+                        .clicked()
+                        {
+                            close_now = true;
+                        }
+                    } else {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    RichText::new(t(l, "Ahora no", "Later")).size(13.0),
+                                )
+                                .corner_radius(CornerRadius::same(8))
+                                .min_size(Vec2::new(88.0, 32.0)),
+                            )
+                            .clicked()
+                        {
+                            close_now = true;
+                        }
+                        if ghost_button(
+                            ui,
+                            t(l, "Solo emuladores (DSU)", "Emulators Only (DSU)"),
+                            !busy,
+                        )
+                        .clicked()
+                        {
+                            switch_dsu_only = true;
+                        }
+                    }
+                    if ghost_button(ui, t(l, "Re-comprobar", "Re-check"), !busy).clicked() {
+                        self.refresh_setup_probes();
+                    }
+                });
+            });
+
+        if modal.should_close() && !busy {
+            close_now = true;
+        }
+        if switch_dsu_only {
+            self.cfg.pad_mode = PadMode::None;
+            self.sync_config();
+            self.show_setup_modal = false;
+        } else if close_now {
+            self.show_setup_modal = false;
+        }
+    }
+
     fn ui_dashboard(&mut self, ui: &mut egui::Ui, status: &BridgeStatus, view_h: f32) {
         let st = &status.telemetry;
         let l = self.cfg.lang;
         let gap = 12.0;
+
+        // Compact alert strip if ViGEmBus is still missing while a virtual pad mode is selected
+        let mut banner_h = 0.0;
+        if !self.vigem_installed && self.cfg.pad_mode != PadMode::None {
+            let b = egui::Frame::default()
+                .fill(lerp_color(BG_CARD, ACCENT_AMBER, 0.08))
+                .stroke(Stroke::new(1.0, with_alpha(ACCENT_AMBER, 100)))
+                .corner_radius(CornerRadius::same(10))
+                .inner_margin(egui::Margin::symmetric(14, 8))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(t(
+                                l,
+                                "ViGEmBus no está instalado: necesario para DualShock 4 / Xbox 360 en Steam.",
+                                "ViGEmBus is not installed: required for virtual DualShock 4 / Xbox 360 in Steam.",
+                            ))
+                            .size(12.0)
+                            .color(Color32::from_rgb(245, 212, 130)),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(t(l, "Instalar ViGEmBus", "Install ViGEmBus"))
+                                            .size(12.0)
+                                            .strong()
+                                            .color(Color32::WHITE),
+                                    )
+                                    .fill(Color32::from_rgb(14, 116, 178))
+                                    .corner_radius(CornerRadius::same(7))
+                                    .min_size(Vec2::new(124.0, 26.0)),
+                                )
+                                .clicked()
+                            {
+                                self.refresh_setup_probes();
+                                self.show_setup_modal = true;
+                            }
+                        });
+                    });
+                });
+            banner_h = b.response.rect.height() + gap;
+            ui.add_space(gap);
+        }
 
         // ── Output profile: compact settings bar ──
         let prof = card(ui, "", None, 0.0, |ui| {
@@ -640,7 +966,7 @@ impl Pro3App {
 
         ui.add_space(gap);
 
-        let showcase_h = (view_h - prof.rect.height() - gap - 2.0).clamp(330.0, 470.0);
+        let showcase_h = (view_h - prof.rect.height() - banner_h - gap - 2.0).clamp(330.0, 470.0);
 
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = gap;
@@ -1055,6 +1381,32 @@ impl Pro3App {
                         );
                     });
                 }
+                ui.add_space(12.0);
+                hairline(ui);
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    let (st_txt, st_col) = if self.vigem_installed {
+                        (t(l, "ViGEmBus instalado · Listo para Steam", "ViGEmBus installed · Ready for Steam"), ACCENT_GREEN)
+                    } else {
+                        (t(l, "ViGEmBus no instalado", "ViGEmBus not installed"), ACCENT_AMBER)
+                    };
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+                    ui.painter().circle_filled(r.center(), 3.2, st_col);
+                    ui.label(RichText::new(st_txt).size(12.0).color(TEXT_SECONDARY));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ghost_button(
+                            ui,
+                            t(l, "Asistente de Steam / ViGEmBus", "Steam / ViGEmBus Setup"),
+                            true,
+                        )
+                        .clicked()
+                        {
+                            self.refresh_setup_probes();
+                            self.show_setup_modal = true;
+                        }
+                    });
+                });
             },
         );
 
