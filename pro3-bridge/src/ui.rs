@@ -1099,8 +1099,8 @@ impl Pro3App {
                     t(l, "Desarrollo asistido por IA", "AI-assisted development"),
                     t(
                         l,
-                        "Este proyecto se desarrolló con ayuda de herramientas de inteligencia artificial y su autor lo revisó y probó con hardware real. Aun así, puede contener errores: úsalo bajo tu propia responsabilidad.",
-                        "This project was built with the help of AI coding tools, then reviewed and tested by its author on real hardware. It may still contain bugs: use it at your own risk.",
+                        "Este proyecto se desarrolló con ayuda de herramientas de inteligencia artificial (Gemini Neon y Claude Opus 5.5) y su autor lo revisó y probó con hardware real. Aun así, puede contener errores: úsalo bajo tu propia responsabilidad.",
+                        "This project was built with the help of AI coding tools (Gemini Neon and Claude Opus 5.5), then reviewed and tested by its author on real hardware. It may still contain bugs: use it at your own risk.",
                     ),
                 );
                 ui.add_space(6.0);

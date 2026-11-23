@@ -124,7 +124,7 @@ python python/pro3_bridge.py
 
 ## AI-Assisted Development Disclaimer
 
-This project was developed **with the help of AI coding assistants** (code, documentation and artwork). Every change was directed, reviewed and tested by the author on real hardware, but AI-assisted code can still contain mistakes. Please read the source, report issues, and use the software at your own risk.
+This project was developed **with the help of AI coding assistants: Gemini Neon and Claude Opus 5.5** (code, documentation and artwork). Every change was directed, reviewed and tested by the author on real hardware, but AI-assisted code can still contain mistakes. Please read the source, report issues, and use the software at your own risk.
 
 ## Legal & Trademark Disclaimer
 

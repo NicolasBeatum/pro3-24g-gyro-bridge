@@ -124,7 +124,7 @@ python python/pro3_bridge.py
 
 ## Aviso de desarrollo asistido por IA
 
-Este proyecto se desarrolló **con ayuda de asistentes de programación basados en IA** (código, documentación y gráficos). El autor dirigió, revisó y probó cada cambio con hardware real, pero el código asistido por IA puede contener errores. Revisa el código, reporta cualquier problema y usa el software bajo tu propia responsabilidad.
+Este proyecto se desarrolló **con ayuda de asistentes de programación basados en IA: Gemini Neon y Claude Opus 5.5** (código, documentación y gráficos). El autor dirigió, revisó y probó cada cambio con hardware real, pero el código asistido por IA puede contener errores. Revisa el código, reporta cualquier problema y usa el software bajo tu propia responsabilidad.
 
 ## Aviso legal y de marcas
 
