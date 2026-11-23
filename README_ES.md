@@ -25,6 +25,20 @@
   <img src="assets/8bitdo_pro3.svg" alt="Silueta de mando estilo Pro 2 / Pro 3" width="480"/>
 </p>
 
+## Demo
+
+<p align="center">
+  <img src="assets/demo.gif" alt="Demo de pro3-bridge: el 8BitDo Pro 3 por dongle 2.4 GHz pasa a ser un DualShock 4 con giroscopio en vivo en Steam y vuelve a la normalidad con Stop" width="960"/>
+</p>
+
+1. Steam ve el mando como un **8BitDo Pro 3** normal (XInput, sin giroscopio).
+2. Pulsa **Start** → Steam ahora ve un **PS4 Controller** (DualShock 4 virtual).
+3. El giroscopio transmite a **~200 Hz** y funciona en vivo en la calibración de giroscopio de Steam.
+4. Pulsa **Stop** → el mando se apaga; al volver a encenderlo es otra vez un **8BitDo Pro 3** normal.
+5. Pulsa **Start** de nuevo → vuelve el DualShock 4 con giroscopio, sin desconectar el dongle.
+
+*(El video está en inglés.)* [▶ Video en calidad completa (MP4)](assets/demo.mp4)
+
 > [!NOTE]
 > **Proyecto comunitario no oficial.** No está afiliado, respaldado ni patrocinado por 8BitDo, Sony ni Microsoft. Consulta el [Aviso legal y de marcas](#aviso-legal-y-de-marcas) y el [Aviso de desarrollo asistido por IA](#aviso-de-desarrollo-asistido-por-ia).
 

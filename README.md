@@ -25,6 +25,20 @@
   <img src="assets/8bitdo_pro3.svg" alt="Pro 2 / Pro 3 style controller outline" width="480"/>
 </p>
 
+## Demo
+
+<p align="center">
+  <img src="assets/demo.gif" alt="pro3-bridge demo: the 8BitDo Pro 3 on the 2.4 GHz dongle becomes a DualShock 4 with live gyro in Steam, then goes back to normal on Stop" width="960"/>
+</p>
+
+1. Steam sees the controller as a regular **8BitDo Pro 3** (XInput, no gyro).
+2. Click **Start** → Steam now sees a **PS4 Controller** (virtual DualShock 4).
+3. Gyro streams at **~200 Hz** and works live in Steam's gyro calibration.
+4. Click **Stop** → the controller turns off; turn it back on and it is a regular **8BitDo Pro 3** again.
+5. Click **Start** again → the DualShock 4 with gyro is back, no re-plugging needed.
+
+[▶ Full-quality video (MP4)](assets/demo.mp4)
+
 > [!NOTE]
 > **Unofficial community project.** Not affiliated with, endorsed by, or sponsored by 8BitDo, Sony, or Microsoft. See [Legal & Trademark Disclaimer](#legal--trademark-disclaimer) and [AI-Assisted Development](#ai-assisted-development-disclaimer).
 

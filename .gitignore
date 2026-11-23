@@ -37,3 +37,6 @@ desktop.ini
 *.ufw
 *.hex
 *.dump
+
+# Local demo recordings & editing workspace (raw screen captures)
+demo/
