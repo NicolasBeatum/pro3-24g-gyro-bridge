@@ -30,7 +30,7 @@ import zlib
 
 import hid
 
-# --- Hardware constants (verified from stock dongle firmware v1.02 + SDL_hidapi_8bitdo.c) ---
+# --- Hardware constants (observed on the stock 2.4 GHz dongle v1.02; cross-checked with SDL's 8BitDo driver) ---
 VID_8BITDO = 0x2DC8
 PID_XINPUT = 0x310B
 PID_DINPUT = 0x600A
@@ -39,7 +39,7 @@ PID_IDLE = 0x3109
 ACCEL_SCALE = 4096.0                # LSB per 1g
 GYRO_DPS_SCALE = 2000.0 / 32767.0   # deg/s per LSB
 
-# Exact 32-bit button bitmask in Report ID 0x02 bytes 18..21 (from firmware 0x0B53E..0x0B860)
+# 32-bit button bitmask in Report ID 0x02 bytes 18..21 (see docs/PROTOCOL.md, section 4)
 BTN_PLUS    = 1 << 0   # Start / Options
 BTN_L3      = 1 << 1   # Left Stick Click
 BTN_R3      = 1 << 2   # Right Stick Click
@@ -120,18 +120,26 @@ def switch_back_xinput():
         return False
     h = hid.device()
     h.open_path(devs[0]["path"])
-    h.write(bytes([0x81, 0x00, 0x51, 0x02]) + bytes(60))
+    # Clean hardware Watchdog reset (clears RAM telemetry flag without touching flash/bootloader)
+    h.write(bytes([0x81, 0x00, 0x1B]) + bytes(61))
     h.close()
-    print("Intentando cambiar dongle a XInput (2DC8:310B)...")
-    deadline = time.time() + 2.5
+    print("Reiniciando dongle al modo XInput de fabrica (~6 s)...")
+    deadline = time.time() + 12.0
+    saw_idle = False
     while time.time() < deadline:
         if hid.enumerate(VID_8BITDO, PID_XINPUT):
-            print("OK: dongle de vuelta en XInput (2DC8:310B).")
+            print("OK: dongle de vuelta en XInput de fabrica (2DC8:310B).")
             return True
-        time.sleep(0.1)
+        if hid.enumerate(VID_8BITDO, PID_IDLE) and not saw_idle:
+            saw_idle = True
+            print("Dongle reiniciado (2DC8:3109). Esperando reconexion del mando...")
+        time.sleep(0.2)
+    if saw_idle:
+        print("OK: dongle restaurado (2DC8:3109). Enciende el mando para conectar en XInput (2DC8:310B).")
+        return True
     print(
-        "Aviso: el firmware bloquea el retorno por software una vez activo el modo telemetria 200 Hz.\n"
-        "       Simplemente desenchufa y volve a enchufar el dongle USB para volver a XInput (2DC8:310B) al instante."
+        "Aviso: el dongle tardo mas de lo esperado en reenumerar.\n"
+        "       Si no vuelve solo, desconecta y vuelve a conectar el dongle USB."
     )
     return False
 

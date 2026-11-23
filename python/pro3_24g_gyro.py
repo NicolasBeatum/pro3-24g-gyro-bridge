@@ -2,17 +2,18 @@
 pro3_24g_gyro.py -- Activa y lee el giroscopio + acelerometro + botones + sticks + gatillos
 del 8BitDo Pro 3 por su dongle 2.4 GHz en Windows (SIN modificar firmware).
 
-Como funciona (descubierto del firmware v1.02 del dongle JieLi AC695x):
+Como funciona (comportamiento observado en el dongle stock v1.02):
   1) Envia [0x81, 0x06, 0x08, 0x00, ...] (WIRELESS_ENTER_TEST_MODE_CMD) por HID vendor 0xFF7A.
-  2) El dongle pasa en RAM a modo 2DC8:600A (desactivando el watchdog) y activa el flag
-     interno de telemetria completa (200 Hz por Report ID 0x02):
+  2) El dongle pasa en RAM a modo 2DC8:600A y activa la telemetria completa
+     (200 Hz por Report ID 0x02):
        - bytes 18..21: mascara de botones (uint32 LE)
        - bytes 22..25: sticks LX, LY, RX, RY (uint8)
        - bytes 26..27: gatillos analogicos L2, R2 (uint8)
        - bytes 28..33: acelerometro X, Y, Z (3x int16 LE, 4096 LSB = 1g)
        - bytes 34..39: giroscopio  X, Y, Z (3x int16 LE, +/-2000 deg/s = +/-32767)
        - byte  41:     bateria (%)
-  3) Es 100% reversible: ejecuta `python pro3_24g_gyro.py --xinput` o desenchufa el dongle.
+  3) Es 100% reversible y solo en RAM: ejecuta `python pro3_24g_gyro.py --xinput`
+     (reinicio limpio por watchdog, ~6 s) o desconecta y vuelve a conectar el dongle.
 
 Uso:
   python pro3_24g_gyro.py               # activa modo gyro 2.4G y muestra lecturas en vivo
@@ -88,14 +89,20 @@ def switch_back_xinput():
         return
     h = hid.device()
     h.open_path(devs[0]["path"])
-    h.write(bytes([0x81, 0x00, 0x51, 0x02]) + bytes(60))
+    # Clean watchdog reset (RAM-only; never touches flash or the update bootloader)
+    h.write(bytes([0x81, 0x00, 0x1B]) + bytes(61))
     h.close()
-    print("Enviado comando de retorno a XInput (2DC8:310B). Esperando 2.5s...")
-    time.sleep(2.5)
-    if hid.enumerate(0x2DC8, 0x310B):
-        print("OK: dongle de vuelta en XInput (2DC8:310B).")
+    print("Reiniciando el dongle al modo XInput de fabrica (~6 s)...")
+    deadline = time.time() + 12.0
+    while time.time() < deadline:
+        if hid.enumerate(0x2DC8, 0x310B):
+            print("OK: dongle de vuelta en XInput (2DC8:310B).")
+            return
+        time.sleep(0.2)
+    if hid.enumerate(0x2DC8, 0x3109):
+        print("OK: dongle reiniciado (2DC8:3109). Enciende el mando para volver a XInput (2DC8:310B).")
     else:
-        print("Aviso: si el dongle paso a espera (2DC8:3109), toca un boton o desenchufa/re-enchufa.")
+        print("Aviso: si el dongle no vuelve solo, desconectalo y vuelve a conectarlo.")
 
 
 def parse_telemetry(pkt):

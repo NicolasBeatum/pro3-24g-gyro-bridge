@@ -9,7 +9,11 @@ pub const PID_IDLE: u16 = 0x3109;
 pub const ACCEL_SCALE: f32 = 4096.0;
 pub const GYRO_DPS_SCALE: f32 = 2000.0 / 32767.0;
 
-// Exact 32-bit button bitmask verified from 8BitDo Pro 3 adapter firmware v1.02
+/// Synthetic placeholder MAC used for DSU when the dongle exposes no usable serial.
+/// It is a pun on "8BitDo 3 2.4G", not a real hardware identifier.
+pub const FALLBACK_MAC: [u8; 6] = [0x8B, 0x17, 0xD0, 0x03, 0x24, 0x00];
+
+// 32-bit button bitmask in Report ID 0x02 bytes 18..21 (observed on the stock 2.4 GHz dongle, v1.02)
 pub const BTN_PLUS: u32 = 1 << 0;
 pub const BTN_L3: u32 = 1 << 1;
 pub const BTN_R3: u32 = 1 << 2;
@@ -29,10 +33,10 @@ pub const BTN_R2_DIG: u32 = 1 << 15;
 pub const BTN_CAPTURE: u32 = 1 << 16; // Star / Capture
 pub const BTN_HOME: u32 = 1 << 17; // Home / Guide / PS
 
-// Extra paddles & hardware buttons (from radio RX handler 0x0E756..0x0E7EA)
+// Back paddles & extra key-map slots (observed live on the stock 2.4 GHz dongle, v1.02)
 pub const BTN_P3: u32 = 1 << 21; // KEY_P3_MAP
-pub const BTN_P1: u32 = 1 << 25; // Extra paddle 1
-pub const BTN_P2: u32 = 1 << 26; // Extra paddle 2
+pub const BTN_P1: u32 = 1 << 26; // Back paddle PL (left, 0x04000000)
+pub const BTN_P2: u32 = 1 << 25; // Back paddle PR (right, 0x02000000)
 pub const BTN_P4: u32 = 1 << 30; // KEY_P4_MAP
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -63,7 +67,7 @@ impl TelemetryState {
         let ly = pkt[23];
         let rx = pkt[24];
         let ry = pkt[25];
-        // Verified against SDL_hidapi_8bitdo.c & firmware 0x0B7B6: byte 26 = R2, byte 27 = L2
+        // Trigger order (cross-checked with SDL's 8BitDo HIDAPI driver): byte 26 = R2, byte 27 = L2
         let r2 = pkt[26];
         let l2 = pkt[27];
 
@@ -118,7 +122,8 @@ pub fn parse_mac_from_serial(serial: Option<&str>) -> [u8; 6] {
             }
         }
     }
-    [0x8B, 0x17, 0xD0, 0x03, 0x24, 0x00]
+    // Synthetic fallback MAC (not a real device address): "8B 17 D0 03 24" ~ "8BitDo 3 2.4G"
+    FALLBACK_MAC
 }
 
 /// Sends WIRELESS_ENTER_TEST_MODE_CMD ([0x81, 0x06, 0x08, 0x00]) to enable 200 Hz IMU telemetry.
@@ -150,6 +155,36 @@ pub fn send_dongle_rumble(dev: &HidDevice, large_motor: u8, small_motor: u8, dur
     pkt[6] = large_motor;
     pkt[7] = small_motor;
     let _ = dev.write(&pkt);
+}
+
+/// Triggers a clean hardware Watchdog reset on the 2.4 GHz dongle (`[0x81, 0x00, 0x1B]`).
+/// Clears RAM telemetry state without touching flash or bootloader, restoring stock
+/// XInput mode (`2DC8:310B`) automatically in ~5–7 seconds (no unplugging needed).
+pub fn send_dongle_reset_to_xinput(dev: &HidDevice) {
+    let mut pkt = [0u8; 64];
+    pkt[0] = 0x81;
+    pkt[1] = 0x00;
+    pkt[2] = 0x1B;
+    let _ = dev.write(&pkt);
+}
+
+/// If the dongle is currently in telemetry mode (`2DC8:600A`), stops rumble and sends
+/// the clean Watchdog reset (`[0x81, 0x00, 0x1B]`) so it returns to stock XInput.
+/// Returns true if the reset command was sent.
+pub fn reset_dongle_if_in_telemetry(api: &mut HidApi) -> bool {
+    let _ = api.refresh_devices();
+    let path = api
+        .device_list()
+        .find(|d| d.vendor_id() == VID_8BITDO && d.product_id() == PID_DINPUT)
+        .map(|d| d.path().to_owned());
+    if let Some(p) = path {
+        if let Ok(dev) = api.open_path(&p) {
+            send_dongle_rumble(&dev, 0, 0, 0);
+            send_dongle_reset_to_xinput(&dev);
+            return true;
+        }
+    }
+    false
 }
 
 pub enum ConnectOutcome {

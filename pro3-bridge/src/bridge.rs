@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 pub enum ConnState {
     Starting,
     Stopped,
+    RestoringXInput,
     SwitchingMode,
     WaitingForController,
     DongleNotFound,
@@ -25,21 +26,23 @@ pub enum ConnState {
 impl ConnState {
     pub fn label(&self, lang: Language) -> String {
         match (lang, self) {
-            (Language::Es, ConnState::Starting) => "Iniciando...".into(),
-            (Language::Es, ConnState::Stopped) => "Detenido".into(),
-            (Language::Es, ConnState::SwitchingMode) => "Activando telemetría 200 Hz (2DC8:600A)...".into(),
-            (Language::Es, ConnState::WaitingForController) => "Dongle en espera — encendé el mando o tocá un botón".into(),
-            (Language::Es, ConnState::DongleNotFound) => "Conectá el dongle 2.4 GHz del 8BitDo Pro 3".into(),
-            (Language::Es, ConnState::Calibrating) => "Calibrando giroscopio (dejá el mando quieto 0.4s)...".into(),
+            (Language::Es, ConnState::Starting) => "Iniciando…".into(),
+            (Language::Es, ConnState::Stopped) => "Detenido — pulsa Iniciar para activar el giroscopio".into(),
+            (Language::Es, ConnState::RestoringXInput) => "Restaurando XInput (~6 s) — luego enciende el mando".into(),
+            (Language::Es, ConnState::SwitchingMode) => "Activando telemetría de 200 Hz (2DC8:600A)…".into(),
+            (Language::Es, ConnState::WaitingForController) => "Dongle en espera — enciende el mando o pulsa un botón".into(),
+            (Language::Es, ConnState::DongleNotFound) => "Conecta el dongle 2.4 GHz del 8BitDo Pro 3".into(),
+            (Language::Es, ConnState::Calibrating) => "Calibrando el giroscopio (deja el mando quieto)…".into(),
             (Language::Es, ConnState::Connected) => "Conectado (2.4 GHz · 200 Hz)".into(),
-            (Language::Es, ConnState::HidError(e)) => format!("Error HIDAPI: {e}"),
+            (Language::Es, ConnState::HidError(e)) => format!("Error de HIDAPI: {e}"),
 
-            (Language::En, ConnState::Starting) => "Starting...".into(),
-            (Language::En, ConnState::Stopped) => "Stopped".into(),
-            (Language::En, ConnState::SwitchingMode) => "Enabling 200 Hz telemetry mode (2DC8:600A)...".into(),
-            (Language::En, ConnState::WaitingForController) => "Dongle idle — turn on controller or press a button".into(),
+            (Language::En, ConnState::Starting) => "Starting…".into(),
+            (Language::En, ConnState::Stopped) => "Stopped — click Start to enable the gyro".into(),
+            (Language::En, ConnState::RestoringXInput) => "Restoring XInput (~6 s) — then turn the controller on".into(),
+            (Language::En, ConnState::SwitchingMode) => "Enabling 200 Hz telemetry mode (2DC8:600A)…".into(),
+            (Language::En, ConnState::WaitingForController) => "Dongle idle — turn on the controller or press a button".into(),
             (Language::En, ConnState::DongleNotFound) => "Plug in the 8BitDo Pro 3 2.4 GHz dongle".into(),
-            (Language::En, ConnState::Calibrating) => "Calibrating gyroscope (keep controller still 0.4s)...".into(),
+            (Language::En, ConnState::Calibrating) => "Calibrating the gyroscope (keep the controller still)…".into(),
             (Language::En, ConnState::Connected) => "Connected (2.4 GHz · 200 Hz)".into(),
             (Language::En, ConnState::HidError(e)) => format!("HIDAPI error: {e}"),
         }
@@ -68,8 +71,8 @@ pub struct BridgeStatus {
 impl Default for BridgeStatus {
     fn default() -> Self {
         Self {
-            running: true,
-            conn_state: ConnState::Starting,
+            running: false,
+            conn_state: ConnState::Stopped,
             connected: false,
             rate_hz: 0.0,
             battery: 0,
@@ -98,10 +101,18 @@ pub struct BridgeControl {
 
 impl BridgeControl {
     pub fn new(cfg: BridgeConfig) -> Arc<Self> {
+        let start_running = cfg.auto_start;
+        let mut st = BridgeStatus::default();
+        st.running = start_running;
+        st.conn_state = if start_running {
+            ConnState::Starting
+        } else {
+            ConnState::Stopped
+        };
         Arc::new(Self {
             config: Mutex::new(cfg),
-            status: Mutex::new(BridgeStatus::default()),
-            running: AtomicBool::new(true),
+            status: Mutex::new(st),
+            running: AtomicBool::new(start_running),
             shutdown: AtomicBool::new(false),
             request_calibrate: AtomicBool::new(false),
             request_test_rumble: AtomicBool::new(false),
@@ -154,21 +165,42 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
 
     let mut pressed_vks: HashSet<u16> = HashSet::new();
     let epoch = Instant::now();
+    let mut dongle_reset_sent = false;
+    let mut was_running = false;
+    let mut restoring_until: Option<Instant> = None;
 
     while !ctrl.shutdown.load(Ordering::Relaxed) {
         if !ctrl.running.load(Ordering::Relaxed) {
-            // Release virtual pad & keys while paused
+            // Release virtual pad & keys while stopped
             vigem = None;
             vigem_mode_active = None;
             dsu = None;
             for vk in pressed_vks.drain() {
                 send_key_state(vk, false);
             }
+            if was_running && !dongle_reset_sent {
+                let restore = ctrl
+                    .config
+                    .lock()
+                    .map(|c| c.restore_xinput_on_exit)
+                    .unwrap_or(true);
+                if restore && reset_dongle_if_in_telemetry(&mut api) {
+                    dongle_reset_sent = true;
+                    restoring_until = Some(Instant::now() + Duration::from_secs(8));
+                }
+            }
+            was_running = false;
+            let state = if restoring_until.is_some_and(|t| Instant::now() < t) {
+                ConnState::RestoringXInput
+            } else {
+                restoring_until = None;
+                ConnState::Stopped
+            };
             if let Ok(mut s) = ctrl.status.lock() {
                 s.running = false;
                 s.connected = false;
                 s.rate_hz = 0.0;
-                s.conn_state = ConnState::Stopped;
+                s.conn_state = state;
                 s.vigem_ok = false;
                 s.vigem_mode_active = None;
                 s.vigem_error = None;
@@ -176,6 +208,9 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
             thread::sleep(Duration::from_millis(100));
             continue;
         }
+        was_running = true;
+        dongle_reset_sent = false;
+        restoring_until = None;
 
         let cfg_snap = ctrl.config.lock().map(|c| c.clone()).unwrap_or_default();
 
@@ -183,7 +218,7 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
         if cfg_snap.dsu_enabled {
             if dsu.is_none() || dsu_port_bound != cfg_snap.dsu_port {
                 dsu = None;
-                match DsuServer::bind(cfg_snap.dsu_port, [0x8B, 0x17, 0xD0, 0x03, 0x24, 0x00]) {
+                match DsuServer::bind(cfg_snap.dsu_port, FALLBACK_MAC) {
                     Ok(srv) => {
                         dsu_port_bound = cfg_snap.dsu_port;
                         dsu = Some(srv);
@@ -574,10 +609,46 @@ fn bridge_loop(ctrl: Arc<BridgeControl>) {
             }
         }
 
-        // Clean stop rumble on disconnect/pause
+        // Clean stop rumble on disconnect/pause/exit
         send_dongle_rumble(&dev, 0, 0, 0);
         for vk in pressed_vks.drain() {
             send_key_state(vk, false);
+        }
+
+        // On Stop or full app exit, restore stock XInput (2DC8:310B) via Watchdog reset
+        if ctrl.shutdown.load(Ordering::Relaxed) || !ctrl.running.load(Ordering::Relaxed) {
+            vigem = None;
+            vigem_mode_active = None;
+            dsu = None;
+            let restore = ctrl
+                .config
+                .lock()
+                .map(|c| c.restore_xinput_on_exit)
+                .unwrap_or(true);
+            if restore {
+                send_dongle_reset_to_xinput(&dev);
+                dongle_reset_sent = true;
+                restoring_until = Some(Instant::now() + Duration::from_secs(8));
+            }
+        }
+    }
+
+    // Release virtual devices before returning
+    drop(vigem);
+    drop(dsu);
+    for vk in pressed_vks.drain() {
+        send_key_state(vk, false);
+    }
+
+    // If the user paused/stopped earlier and then exited, still restore stock XInput if needed
+    if !dongle_reset_sent {
+        let restore = ctrl
+            .config
+            .lock()
+            .map(|c| c.restore_xinput_on_exit)
+            .unwrap_or(true);
+        if restore {
+            reset_dongle_if_in_telemetry(&mut api);
         }
     }
 }

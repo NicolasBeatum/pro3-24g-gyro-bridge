@@ -14,10 +14,18 @@ conversion below matches the reference implementation:
 All multi-byte fields are **little-endian**. Offsets are **0-based** and **include the
 Report ID byte** (that is, `pkt[0]` is the Report ID, exactly as `hidapi` returns it).
 
+> [!IMPORTANT]
+> **Unofficial / trademark notice.** This is an independent, community-written
+> interoperability reference. It is **not affiliated with, endorsed by, or sponsored by
+> 8BitDo, Sony, or Microsoft**. All product names and trademarks (8BitDo, Pro 3,
+> DualShock, PlayStation, Xbox, XInput, Steam, ...) belong to their respective owners and
+> are used only to describe compatibility. No vendor firmware, code or binaries are
+> included or redistributed. Provided "AS IS" under the [MIT License](../LICENSE).
+
 > [!WARNING]
-> This protocol is unofficial and was worked out by observation. It is not endorsed by
-> 8BitDo. Everything documented here is **RAM-only**: nothing is written to the dongle's
-> or the controller's flash. **Do not send firmware-update / bootloader opcodes**, such as
+> This protocol was worked out by observing the stock dongle's USB behaviour and may be
+> incomplete or change with future firmware updates. Everything documented here is
+> **RAM-only**: nothing is written to the dongle's or the controller's flash. **Do not send firmware-update / bootloader opcodes**, such as
 > Report ID `0x81` with the `0x51 0x00` or `0x51 0x05` sequences. These are part of the
 > vendor's update path, and sending them can leave the dongle unusable until it is
 > reflashed with the official tool. `pro3-bridge` never sends them.
@@ -46,7 +54,8 @@ depending on its state:
 4. **Nothing found**: the dongle is not plugged in.
 
 The DSU MAC address is taken from the HID serial string (the first 12 hex digits). If the
-serial is missing or malformed, it falls back to `8B:17:D0:03:24:00`.
+serial is missing or malformed, it falls back to `8B:17:D0:03:24:00`, a **synthetic**
+placeholder (a pun on "8BitDo 3 2.4G"), not a real hardware address.
 
 ---
 
@@ -72,13 +81,40 @@ The command:
 
 - is **RAM-only**: it changes the dongle's runtime state and nothing is persisted.
 - makes the dongle re-enumerate as `2DC8:600A` within a few hundred milliseconds.
-- is **undone by unplugging and replugging the dongle**, which brings back stock
-  `2DC8:310B` XInput. This is the supported way to revert.
+- is **automatically undone on exit** by sending the clean hardware Watchdog reset command
+  below (or at any time by unplugging and replugging the dongle).
 
-> The Python reference (`python/pro3_bridge.py --xinput`) also tries to switch back over
-> software with `[0x81, 0x00, 0x51, 0x02, …]`. Once telemetry mode is active, the firmware
-> usually ignores this request. Treat the physical replug as the real revert path, and do
-> not try other `0x51 xx` values (see the warning above).
+### 2.1 Returning to stock XInput (`2DC8:310B`) via Watchdog reset
+
+Once telemetry mode is active, the dongle's firmware keeps an internal RAM flag set that
+overrides mode-change requests (`0x51 0x02`). To cleanly restore stock XInput without
+physically unplugging the dongle, send one 64-byte output report in `600A` mode:
+
+```
+Offset  0     1     2     3 … 63
+Value   0x81  0x00  0x1B  0x00 …
+        │     │     └─ Watchdog reset trigger (0x1B)
+        │     └─ System command group (0x00)
+        └─ Report ID 0x81 (vendor command)
+```
+
+```rust
+let mut pkt = [0u8; 64];
+pkt[..3].copy_from_slice(&[0x81, 0x00, 0x1B]);
+dev.write(&pkt)?;
+```
+
+- **RAM-only / safe:** does **not** touch flash and does **not** enter the UBOOT update
+  bootloader (unlike `0x51 0x00` or `0x51 0x05`, which must never be sent).
+- Triggers the JieLi AC695x hardware Watchdog timer (~4.5 s), cold-booting the dongle
+  cleanly with zeroed RAM (`2DC8:3109` at ~5.8 s, then auto-reconnecting to the controller
+  in stock **`2DC8:310B` XInput** within ~6–8 s).
+- `pro3-bridge.exe` sends this automatically when you click **Stop** or exit the app
+  (configurable in *Advanced → Window & System Tray*). `python/pro3_bridge.py --xinput`
+  (`python/Volver_a_XInput.bat`) and `python/pro3_24g_gyro.py --xinput` use the same
+  command.
+- The controller drops its link while the dongle reboots and powers off; just turn it
+  back on.
 
 ---
 
@@ -180,8 +216,8 @@ conversion.
 | 16 | `0x0001_0000` | `BTN_CAPTURE` | Star / Capture |
 | 17 | `0x0002_0000` | `BTN_HOME` | Home / Guide |
 | 21 | `0x0020_0000` | `BTN_P3` | Extra key-map slot (`KEY_P3_MAP`) |
-| **25** | `0x0200_0000` | `BTN_P1` | **Back paddle PL** (independent) |
-| **26** | `0x0400_0000` | `BTN_P2` | **Back paddle PR** (independent) |
+| **25** | `0x0200_0000` | `BTN_P2` | **Back paddle PR** (right, independent) |
+| **26** | `0x0400_0000` | `BTN_P1` | **Back paddle PL** (left, independent) |
 | 30 | `0x4000_0000` | `BTN_P4` | Extra key-map slot (`KEY_P4_MAP`) |
 
 Bits 18–20, 22–24, 27–29 and 31 are not used by the bridge.
@@ -192,7 +228,7 @@ virtual pad.
 
 ### Back paddles and L4 / R4
 
-- **PL (bit 25)** and **PR (bit 26)** come over the 2.4 GHz link as their own raw bits
+- **PL (bit 26)** and **PR (bit 25)** come over the 2.4 GHz link as their own raw bits
   and can be remapped freely on the host.
 - The dongle's `0xA2` radio packet does **not** carry **L4 / R4** as separate raw bits
   when they are unmapped. To use them, map them to a standard button with the

@@ -12,6 +12,7 @@ use std::time::Duration;
 use tray_icon::TrayIcon;
 
 pub const PRO3_SVG: &[u8] = include_bytes!("../../assets/8bitdo_pro3.svg");
+const REPO_URL: &str = "https://github.com/NicolasBeatum/pro3-24g-gyro-bridge";
 
 // ── Design tokens ──────────────────────────────────────────────────────────
 // Deep matte canvas, soft cards, ultra-subtle 1px strokes.
@@ -158,7 +159,7 @@ impl Pro3App {
                 ui.set_width(430.0);
                 ui.spacing_mut().item_spacing.y = 6.0;
                 ui.label(
-                    RichText::new(t(l, "¿Qué querés hacer al cerrar?", "What would you like to do?"))
+                    RichText::new(t(l, "¿Qué quieres hacer al cerrar?", "What should happen when you close?"))
                         .size(16.0)
                         .strong()
                         .color(TEXT_PRIMARY),
@@ -166,8 +167,8 @@ impl Pro3App {
                 ui.label(
                     RichText::new(t(
                         l,
-                        "Elegí cómo se comporta la ventana al pulsar X.",
-                        "Choose how the window behaves when you click X.",
+                        "Elige qué hace la ventana al pulsar X.",
+                        "Choose what the window does when you click X.",
                     ))
                     .size(12.0)
                     .color(TEXT_MUTED),
@@ -180,8 +181,8 @@ impl Pro3App {
                     t(l, "Minimizar a la bandeja", "Minimize to Tray"),
                     t(
                         l,
-                        "Oculta la ventana abajo junto al reloj y mantiene el giroscopio, Steam y DSU funcionando en segundo plano.",
-                        "Hides the window to the taskbar tray and keeps Gyro, Steam DS4, and DSU running in the background.",
+                        "Oculta la ventana en la bandeja del sistema (junto al reloj) y mantiene el giroscopio, el DualShock 4 virtual y DSU funcionando en segundo plano.",
+                        "Hides the window to the system tray (next to the clock) and keeps the gyro, virtual DualShock 4 and DSU running in the background.",
                     ),
                     TEXT_SECONDARY,
                 );
@@ -190,11 +191,19 @@ impl Pro3App {
                     ui,
                     ACCENT_AMBER,
                     t(l, "Cerrar completamente", "Exit Completely"),
-                    t(
-                        l,
-                        "Detiene la app. Deberás desenchufar y volver a enchufar el dongle USB para que el mando vuelva a funcionar en modo XInput normal.",
-                        "Stops the bridge. You will need to unplug and replug the USB dongle to restore default XInput mode.",
-                    ),
+                    if self.cfg.restore_xinput_on_exit {
+                        t(
+                            l,
+                            "Detiene el puente y devuelve el dongle al modo XInput de fábrica (~6 s). El mando se apagará un momento: vuelve a encenderlo y funcionará con normalidad, sin desenchufar nada.",
+                            "Stops the bridge and returns the dongle to stock XInput mode (~6 s). The controller turns off briefly — just turn it back on and it works as usual, no unplugging needed.",
+                        )
+                    } else {
+                        t(
+                            l,
+                            "Detiene el puente. La restauración automática está desactivada: desconecta y vuelve a conectar el dongle USB para volver a XInput.",
+                            "Stops the bridge. Auto-restore is off, so unplug and replug the USB dongle to return to stock XInput.",
+                        )
+                    },
                     Color32::from_rgb(232, 196, 120),
                 );
 
@@ -203,8 +212,8 @@ impl Pro3App {
                     &mut self.remember_close_choice,
                     RichText::new(t(
                         l,
-                        "Recordar mi elección (se puede cambiar en Avanzado)",
-                        "Remember my choice (can be changed in Advanced)",
+                        "Recordar mi elección (puedes cambiarla en Avanzado)",
+                        "Remember my choice (you can change it in Advanced)",
                     ))
                     .size(12.5)
                     .color(TEXT_SECONDARY),
@@ -225,7 +234,7 @@ impl Pro3App {
                     }
                     if solid_button(
                         ui,
-                        t(l, "Cerrar app", "Exit App"),
+                        t(l, "Cerrar la app", "Exit App"),
                         Color32::from_rgb(58, 24, 32),
                         Color32::from_rgb(255, 176, 186),
                         Stroke::new(1.0, with_alpha(ACCENT_CORAL, 110)),
@@ -329,11 +338,15 @@ impl Pro3App {
                         with_alpha(dot_color, (30.0 + 40.0 * pulse) as u8),
                     );
                     p.circle_filled(rect.center(), 3.4, dot_color);
-                    ui.label(
-                        RichText::new(status.conn_state.label(l))
+                    let state_txt = status.conn_state.label(l);
+                    let r = ui.label(
+                        RichText::new(ellipsize(&state_txt, 60))
                             .size(12.0)
                             .color(TEXT_SECONDARY),
                     );
+                    if state_txt.chars().count() > 60 {
+                        r.on_hover_text(state_txt);
+                    }
                 });
             });
 
@@ -348,8 +361,8 @@ impl Pro3App {
                         Stroke::new(1.0, with_alpha(ACCENT_CORAL, 100)),
                         t(
                             l,
-                            "Detiene el puente (HID → ViGEm / DSU)",
-                            "Stops the bridge (HID → ViGEm / DSU)",
+                            "Detiene el puente y devuelve el dongle a XInput de fábrica (~6 s; luego vuelve a encender el mando)",
+                            "Stops the bridge and returns the dongle to stock XInput (~6 s; then turn the controller back on)",
                         ),
                     )
                 } else {
@@ -360,8 +373,8 @@ impl Pro3App {
                         Stroke::NONE,
                         t(
                             l,
-                            "Inicia el puente (HID → ViGEm / DSU)",
-                            "Starts the bridge (HID → ViGEm / DSU)",
+                            "Activa la telemetría de 200 Hz e inicia el puente (HID → ViGEmBus / DSU)",
+                            "Enables 200 Hz telemetry and starts the bridge (HID → ViGEmBus / DSU)",
                         ),
                     )
                 };
@@ -372,11 +385,11 @@ impl Pro3App {
                     self.ctrl.running.store(!is_running, Ordering::Relaxed);
                 }
 
-                let need_ctrl = t(l, "Conectá el mando primero", "Connect the controller first");
+                let need_ctrl = t(l, "Primero conecta el mando", "Connect the controller first");
                 if ghost_button(ui, t(l, "Vibrar", "Rumble"), status.connected)
                     .on_hover_text(t(
                         l,
-                        "Envía un pulso corto de vibración de prueba",
+                        "Envía un breve pulso de vibración de prueba",
                         "Sends a short test rumble pulse",
                     ))
                     .on_disabled_hover_text(need_ctrl)
@@ -387,8 +400,8 @@ impl Pro3App {
                 if ghost_button(ui, t(l, "Calibrar", "Calibrate"), status.connected)
                     .on_hover_text(t(
                         l,
-                        "Recalibra el bias del giroscopio (dejá el mando quieto). Atajo en el mando: Minus + Plus",
-                        "Recalibrates gyroscope bias (keep the controller still). Controller shortcut: Minus + Plus",
+                        "Recalibra el sesgo del giroscopio (deja el mando quieto). Atajo en el mando: mantén Minus + Plus",
+                        "Recalibrates the gyro bias (keep the controller still). Controller shortcut: hold Minus + Plus",
                     ))
                     .on_disabled_hover_text(need_ctrl)
                     .clicked()
@@ -440,11 +453,15 @@ impl Pro3App {
             strip_sep(ui);
 
             let (vigem_txt, vigem_col, vigem_full) = if let Some(err) = &status.vigem_error {
-                (ellipsize(err, 44), ACCENT_CORAL, Some(err.clone()))
+                (
+                    t(l, "no disponible — instala ViGEmBus", "unavailable — install ViGEmBus").to_string(),
+                    ACCENT_CORAL,
+                    Some(err.clone()),
+                )
             } else {
                 let s: &str = match status.vigem_mode_active {
                     Some(PadMode::Ds4NativeGyro) => {
-                        t(l, "DualShock 4 (Gyro Nativo Steam)", "DualShock 4 (Native Steam Gyro)")
+                        t(l, "DualShock 4 (giroscopio nativo en Steam)", "DualShock 4 (native Steam gyro)")
                     }
                     Some(PadMode::Xbox360) => "Xbox 360 (XInput)",
                     Some(PadMode::None) => t(l, "Solo DSU", "DSU Only"),
@@ -488,9 +505,9 @@ impl Pro3App {
 
         // ── Row 3: underline navigation tabs (sit on the panel separator) ──
         let tabs = [
-            (Tab::Dashboard, t(l, "Panel en Vivo", "Live Dashboard")),
-            (Tab::Paddles, t(l, "Botones Traseros (PL / PR)", "Back Paddles (PL / PR)")),
-            (Tab::Advanced, t(l, "Gyro PC & Avanzado", "PC Gyro & Advanced")),
+            (Tab::Dashboard, t(l, "Panel en vivo", "Live Dashboard")),
+            (Tab::Paddles, t(l, "Botones traseros (PL / PR)", "Back Paddles (PL / PR)")),
+            (Tab::Advanced, t(l, "Giroscopio en PC y avanzado", "PC Gyro & Advanced")),
         ];
         tab_bar(ui, &mut self.tab, &tabs);
     }
@@ -572,7 +589,7 @@ impl Pro3App {
                     &[
                         (
                             PadMode::Ds4NativeGyro,
-                            t(l, "DualShock 4 · Gyro nativo", "DualShock 4 · Native gyro"),
+                            t(l, "DualShock 4 · Giroscopio nativo", "DualShock 4 · Native gyro"),
                         ),
                         (PadMode::Xbox360, "Xbox 360"),
                         (PadMode::None, t(l, "Solo DSU", "DSU Only")),
@@ -583,11 +600,11 @@ impl Pro3App {
                             "DualShock 4 virtual con giroscopio nativo para Steam Input",
                             "Virtual DualShock 4 with native gyro for Steam Input",
                         ),
-                        t(l, "Mando Xbox 360 virtual (XInput, sin gyro)", "Virtual Xbox 360 pad (XInput, no gyro)"),
+                        t(l, "Mando Xbox 360 virtual (XInput, sin giroscopio)", "Virtual Xbox 360 pad (XInput, no gyro)"),
                         t(
                             l,
                             "Sin mando virtual: solo movimiento por DSU para emuladores",
-                            "No virtual pad: motion over DSU for emulators only",
+                            "No virtual pad: DSU motion for emulators only",
                         ),
                     ],
                 );
@@ -598,7 +615,7 @@ impl Pro3App {
                     &mut self.cfg.layout,
                     &[(ButtonLayout::XboxPs, "Xbox / PS"), (ButtonLayout::Nintendo, "Nintendo")],
                     &[
-                        t(l, "A abajo, B derecha (estándar Xbox / PlayStation)", "A bottom, B right (Xbox / PlayStation standard)"),
+                        t(l, "A abajo, B a la derecha (estándar Xbox / PlayStation)", "A at the bottom, B on the right (Xbox / PlayStation standard)"),
                         t(l, "Intercambia A/B y X/Y (estilo Nintendo)", "Swaps A/B and X/Y (Nintendo style)"),
                     ],
                 );
@@ -606,7 +623,7 @@ impl Pro3App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                toggle(ui, &mut self.cfg.dsu_enabled, t(l, "DSU Emuladores (UDP)", "DSU Emulators (UDP)"));
+                toggle(ui, &mut self.cfg.dsu_enabled, t(l, "DSU para emuladores (UDP)", "DSU for emulators (UDP)"));
                 ui.add_space(14.0);
                 toggle(ui, &mut self.cfg.rumble_enabled, t(l, "Vibración", "Rumble"));
                 if self.cfg.rumble_enabled {
@@ -643,7 +660,7 @@ impl Pro3App {
                     };
                     card(
                         ui,
-                        t(l, "8BitDo Pro 3 · Vista en Vivo", "8BitDo Pro 3 · Live View"),
+                        t(l, "8BitDo Pro 3 · Vista en vivo", "8BitDo Pro 3 · Live View"),
                         Some(meta),
                         showcase_h,
                         |ui| {
@@ -670,7 +687,7 @@ impl Pro3App {
                     let hz_col = if status.rate_hz > 150.0 { ACCENT_GREEN } else { TEXT_MUTED };
                     card(
                         ui,
-                        t(l, "Giroscopio y Orientación", "Gyroscope & Orientation"),
+                        t(l, "Giroscopio y orientación", "Gyroscope & Orientation"),
                         Some((&hz, hz_col)),
                         showcase_h,
                         |ui| {
@@ -713,8 +730,8 @@ impl Pro3App {
                             )
                             .on_hover_text(t(
                                 l,
-                                "Minus + Plus recalibra el giroscopio",
-                                "Minus + Plus recalibrates the gyroscope",
+                                "Mantén Minus + Plus para recalibrar el giroscopio",
+                                "Hold Minus + Plus to recalibrate the gyroscope",
                             ));
                         },
                     );
@@ -728,15 +745,15 @@ impl Pro3App {
         let l = self.cfg.lang;
         card(
             ui,
-            t(l, "Botones Traseros Independientes (PL / PR)", "Independent Back Paddles (PL / PR)"),
+            t(l, "Botones traseros independientes (PL / PR)", "Independent Back Paddles (PL / PR)"),
             None,
             0.0,
             |ui| {
                 ui.label(
                     RichText::new(t(
                         l,
-                        "Los botones traseros PL y PR se reciben de forma independiente por radio 2.4 GHz. Presionalos para confirmar cuál corresponde a P1 / P2 y elegí su acción:",
-                        "The PL and PR back paddles are received independently over 2.4 GHz. Press each paddle to see which indicator lights up and choose its action:",
+                        "Los botones traseros PL y PR llegan como bits independientes por la conexión 2.4 GHz. Pulsa cada uno para ver qué indicador se ilumina y elige su acción:",
+                        "The PL and PR back paddles arrive as independent bits over the 2.4 GHz link. Press each paddle to see which indicator lights up, then choose its action:",
                     ))
                     .size(12.5)
                     .color(TEXT_SECONDARY),
@@ -746,8 +763,8 @@ impl Pro3App {
                 paddle_row(
                     ui,
                     "PL",
-                    t(l, "Trasero PL / P1", "Back Paddle PL / P1"),
-                    "bit 25 · 0x02000000",
+                    t(l, "Trasero izquierdo (PL)", "Left back paddle (PL)"),
+                    "bit 26 · 0x04000000",
                     (btns & BTN_P1) != 0,
                     "p1",
                     &mut self.cfg.paddle_p1,
@@ -757,8 +774,8 @@ impl Pro3App {
                 paddle_row(
                     ui,
                     "PR",
-                    t(l, "Trasero PR / P2", "Back Paddle PR / P2"),
-                    "bit 26 · 0x04000000",
+                    t(l, "Trasero derecho (PR)", "Right back paddle (PR)"),
+                    "bit 25 · 0x02000000",
                     (btns & BTN_P2) != 0,
                     "p2",
                     &mut self.cfg.paddle_p2,
@@ -768,7 +785,7 @@ impl Pro3App {
                 ui.add_space(16.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 10.0;
-                    field_label(ui, t(l, "Máscara de botones actual", "Current raw button bitmask"));
+                    field_label(ui, t(l, "Máscara de botones actual", "Current raw button mask"));
                     ui.label(
                         RichText::new(format!("0x{:08X}", btns))
                             .monospace()
@@ -789,8 +806,8 @@ impl Pro3App {
                         ui.label(
                             RichText::new(t(
                                 l,
-                                "¿Qué pasa con los botones superiores L4 y R4?",
-                                "What about the extra L4 and R4 shoulder buttons?",
+                                "¿Y los botones L4 y R4?",
+                                "What about L4 and R4?",
                             ))
                             .strong()
                             .size(12.5)
@@ -800,8 +817,8 @@ impl Pro3App {
                         ui.label(
                             RichText::new(t(
                                 l,
-                                "El firmware del dongle 2.4 GHz (paquete de radio 0xA2) solo expone PL y PR como bits crudos independientes; L4 y R4 no se envían como bits separados si están sin asignar. Para usar L4 y R4, asignales cualquier botón desde el propio mando o con 8BitDo Ultimate Software y funcionarán normalmente en todos los juegos.",
-                                "The 2.4 GHz dongle firmware (0xA2 radio packet) only exposes PL and PR as separate raw bits; unmapped L4 and R4 buttons are not sent separately. To use L4 and R4, map them to any standard button on the controller or via 8BitDo Ultimate Software and they will work in all games.",
+                                "Por la conexión 2.4 GHz, el dongle solo envía PL y PR como bits independientes; L4 y R4 sin asignar no generan un bit propio. Para usarlos, asígnales un botón estándar desde el propio mando o con 8BitDo Ultimate Software y funcionarán en cualquier juego.",
+                                "Over the 2.4 GHz link, the dongle only sends PL and PR as independent bits; unmapped L4 and R4 do not produce a bit of their own. To use them, map them to a standard button on the controller itself or with 8BitDo Ultimate Software and they will work in any game.",
                             ))
                             .size(12.0)
                             .color(TEXT_SECONDARY),
@@ -817,7 +834,7 @@ impl Pro3App {
         // ── Window / tray behavior ──
         card(
             ui,
-            t(l, "Ventana y Bandeja del Sistema", "Window & System Tray"),
+            t(l, "Ventana y bandeja del sistema", "Window & System Tray"),
             None,
             0.0,
             |ui| {
@@ -837,20 +854,40 @@ impl Pro3App {
                     CloseAction::Ask => t(
                         l,
                         "Se mostrará un diálogo cada vez que cierres la ventana.",
-                        "A dialog will be shown every time you close the window.",
+                        "A dialog appears every time you close the window.",
                     ),
                     CloseAction::MinimizeToTray => t(
                         l,
-                        "La ventana se oculta en la bandeja y el puente sigue funcionando.",
-                        "The window hides to the tray and the bridge keeps running.",
+                        "La ventana se oculta en la bandeja del sistema y el puente sigue funcionando.",
+                        "The window hides to the system tray and the bridge keeps running.",
                     ),
                     CloseAction::Exit => t(
                         l,
-                        "La app se cierra: desenchufá y volvé a enchufar el dongle para restaurar XInput.",
-                        "The app exits: unplug and replug the dongle to restore XInput.",
+                        "La app se cierra y devuelve el dongle a XInput (~6 s): el mando se apaga un momento, solo tienes que volver a encenderlo.",
+                        "The app exits and returns the dongle to stock XInput (~6 s): the controller turns off briefly — just turn it back on.",
                     ),
                 };
                 ui.label(RichText::new(hint).size(11.5).color(TEXT_MUTED));
+                ui.add_space(10.0);
+                toggle(
+                    ui,
+                    &mut self.cfg.auto_start,
+                    t(
+                        l,
+                        "Iniciar el puente automáticamente al abrir la app",
+                        "Start the bridge automatically when the app opens",
+                    ),
+                );
+                ui.add_space(6.0);
+                toggle(
+                    ui,
+                    &mut self.cfg.restore_xinput_on_exit,
+                    t(
+                        l,
+                        "Restaurar XInput de fábrica al detener o salir (~6 s; luego vuelve a encender el mando)",
+                        "Restore stock XInput on Stop or Exit (~6 s; then turn the controller back on)",
+                    ),
+                );
             },
         );
 
@@ -860,7 +897,7 @@ impl Pro3App {
         let gyro_meta = if self.cfg.gyro_pc_mode == GyroPcMode::Off {
             (t(l, "desactivado", "off"), TEXT_MUTED)
         } else if status.gyro_pc_active {
-            (t(l, "ACTIVO", "ACTIVE"), ACCENT_GREEN)
+            (t(l, "activo", "active"), ACCENT_GREEN)
         } else {
             (t(l, "en espera", "standby"), ACCENT_AMBER)
         };
@@ -868,8 +905,8 @@ impl Pro3App {
             ui,
             t(
                 l,
-                "Giroscopio Directo para PC (opcional fuera de Steam Input)",
-                "Direct PC Gyro Aiming (optional outside Steam Input)",
+                "Giroscopio directo en PC (opcional, fuera de Steam Input)",
+                "Direct PC Gyro Aiming (optional, outside Steam Input)",
             ),
             Some(gyro_meta),
             0.0,
@@ -877,8 +914,8 @@ impl Pro3App {
                 ui.label(
                     RichText::new(t(
                         l,
-                        "En modo DualShock 4 dejalo en 'Desactivado' para que Steam Input controle el giroscopio nativamente. Usá Gyro → Mouse o Gyro → Stick Derecho solo en juegos fuera de Steam o en modo Xbox 360.",
-                        "In DualShock 4 mode, leave this Off so Steam Input handles the gyroscope natively. Use Gyro → Mouse or Gyro → Right Stick for non-Steam PC games or Xbox 360 mode.",
+                        "En modo DualShock 4, déjalo en «Desactivado» para que Steam Input gestione el giroscopio de forma nativa. Usa Gyro → Mouse o Gyro → Stick derecho solo en juegos fuera de Steam o en modo Xbox 360.",
+                        "In DualShock 4 mode, leave this Off so Steam Input handles the gyro natively. Use Gyro → Mouse or Gyro → Right Stick only for non-Steam games or in Xbox 360 mode.",
                     ))
                     .size(12.0)
                     .color(TEXT_SECONDARY),
@@ -892,7 +929,7 @@ impl Pro3App {
                         &[
                             (GyroPcMode::Off, t(l, "Desactivado (recomendado en DS4)", "Off (recommended for DS4)")),
                             (GyroPcMode::Mouse, "Gyro → Mouse"),
-                            (GyroPcMode::RightStick, t(l, "Gyro → Stick Derecho", "Gyro → Right Stick")),
+                            (GyroPcMode::RightStick, t(l, "Gyro → Stick derecho", "Gyro → Right Stick")),
                         ],
                         &[],
                     );
@@ -909,7 +946,7 @@ impl Pro3App {
                                 (GyroTrigger::LeftBumper, t(l, "Mantener L1", "Hold L1")),
                                 (GyroTrigger::RightBumper, t(l, "Mantener R1", "Hold R1")),
                                 (GyroTrigger::AlwaysOn, t(l, "Siempre activo", "Always on")),
-                                (GyroTrigger::ToggleCapture, "Toggle (Star)"),
+                                (GyroTrigger::ToggleCapture, t(l, "Alternar (Star)", "Toggle (Star)")),
                             ],
                             &[],
                         );
@@ -918,7 +955,7 @@ impl Pro3App {
                     setting_row(ui, t(l, "Sensibilidad", "Sensitivity"), |ui| {
                         ui.add(egui::Slider::new(&mut self.cfg.gyro_sens, 0.2..=4.0));
                     });
-                    setting_row(ui, t(l, "Mezcla Roll en eje X", "Roll mix on X axis"), |ui| {
+                    setting_row(ui, t(l, "Mezcla de roll en eje X", "Roll mix on X axis"), |ui| {
                         ui.add(egui::Slider::new(&mut self.cfg.gyro_roll_mix, 0.0..=1.0));
                     });
                     setting_row(ui, t(l, "Zona muerta (°/s)", "Deadzone (°/s)"), |ui| {
@@ -938,7 +975,7 @@ impl Pro3App {
         // ── DSU server + quick guide ──
         card(
             ui,
-            t(l, "Servidor DSU / Cemuhook y Guía Rápida", "DSU / Cemuhook Server & Quick Guide"),
+            t(l, "Servidor DSU / Cemuhook y guía rápida", "DSU / Cemuhook Server & Quick Guide"),
             None,
             0.0,
             |ui| {
@@ -947,7 +984,7 @@ impl Pro3App {
                     toggle(
                         ui,
                         &mut self.cfg.dsu_enabled,
-                        t(l, "Activar servidor UDP DSU", "Enable DSU UDP server"),
+                        t(l, "Activar servidor DSU (UDP, solo local)", "Enable DSU server (UDP, local only)"),
                     );
                     ui.add_space(18.0);
                     field_label(ui, t(l, "Puerto", "Port"));
@@ -997,8 +1034,8 @@ impl Pro3App {
                         t(l, "XInput de fábrica", "Stock XInput"),
                         t(
                             l,
-                            "Cerrá esta app y desenchufá/volvé a enchufar el dongle.",
-                            "Exit this app and unplug/replug the USB dongle.",
+                            "Al pulsar Detener o salir, el dongle vuelve solo a XInput (~6 s). El mando se apagará un momento: vuelve a encenderlo y funcionará con normalidad.",
+                            "Clicking Stop or exiting returns the dongle to stock XInput automatically (~6 s). The controller turns off briefly — just turn it back on and it works as usual.",
                         )
                         .to_string(),
                     ),
@@ -1018,6 +1055,64 @@ impl Pro3App {
                         );
                     });
                 }
+            },
+        );
+
+        ui.add_space(12.0);
+        self.ui_about(ui);
+        ui.add_space(4.0);
+    }
+
+    /// Slim "About" card: version, license, repository link and the AI-assisted /
+    /// unofficial-project disclaimers.
+    fn ui_about(&self, ui: &mut egui::Ui) {
+        let l = self.cfg.lang;
+        let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        card(
+            ui,
+            t(l, "Acerca de", "About"),
+            Some((&version, ACCENT_VIOLET)),
+            0.0,
+            |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(RichText::new("Pro 3 Gyro Bridge").size(12.5).strong().color(TEXT_PRIMARY));
+                    ui.label(RichText::new(format!("{version} ·")).size(12.0).color(TEXT_MUTED));
+                    ui.label(RichText::new(t(l, "Licencia MIT ·", "MIT License ·")).size(12.0).color(TEXT_MUTED));
+                    ui.hyperlink_to(
+                        RichText::new("github.com/NicolasBeatum/pro3-24g-gyro-bridge").size(12.0),
+                        REPO_URL,
+                    )
+                    .on_hover_text(REPO_URL);
+                });
+                ui.add_space(8.0);
+                hairline(ui);
+                ui.add_space(8.0);
+
+                let note = |ui: &mut egui::Ui, title: &str, body: &str| {
+                    ui.label(RichText::new(title).size(11.5).strong().color(TEXT_SECONDARY));
+                    ui.add(egui::Label::new(RichText::new(body).size(11.5).color(TEXT_MUTED)).wrap());
+                };
+                ui.spacing_mut().item_spacing.y = 3.0;
+                note(
+                    ui,
+                    t(l, "Desarrollo asistido por IA", "AI-assisted development"),
+                    t(
+                        l,
+                        "Este proyecto se desarrolló con ayuda de herramientas de inteligencia artificial y su autor lo revisó y probó con hardware real. Aun así, puede contener errores: úsalo bajo tu propia responsabilidad.",
+                        "This project was built with the help of AI coding tools, then reviewed and tested by its author on real hardware. It may still contain bugs: use it at your own risk.",
+                    ),
+                );
+                ui.add_space(6.0);
+                note(
+                    ui,
+                    t(l, "Proyecto no oficial", "Unofficial project"),
+                    t(
+                        l,
+                        "Proyecto comunitario independiente de interoperabilidad. No está afiliado, respaldado ni patrocinado por 8BitDo, Sony ni Microsoft; todas las marcas pertenecen a sus respectivos dueños. No modifica ningún firmware: todo ocurre en RAM y es reversible. Se ofrece «tal cual», sin garantías, bajo licencia MIT.",
+                        "Independent community interoperability project. Not affiliated with, endorsed by, or sponsored by 8BitDo, Sony, or Microsoft; all trademarks belong to their respective owners. No firmware is ever modified: everything is RAM-only and reversible. Provided \"as is\", without warranty, under the MIT License.",
+                    ),
+                );
             },
         );
     }

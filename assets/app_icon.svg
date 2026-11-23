@@ -1,36 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- Pro 3 Gyro Bridge app icon: brand-neutral gamepad silhouette + gyro orbit. No text/logos. -->
+  <!-- Pro 3 Gyro Bridge app icon ("Tilt"): brand-neutral tilted gamepad + gyro arc. No text/logos. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1A2030"/>
-      <stop offset="1" stop-color="#0C0E14"/>
-    </linearGradient>
-    <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F1F5F9"/>
-      <stop offset="1" stop-color="#B4C0D0"/>
-    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1E2536"/><stop offset="1" stop-color="#0C0E14"/></linearGradient>
+    <linearGradient id="pad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38BDF8"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+    <linearGradient id="trail" gradientUnits="userSpaceOnUse" x1="196" y1="0" x2="56" y2="0"><stop offset="0" stop-color="#E2E8F0" stop-opacity="0.12"/><stop offset="1" stop-color="#E2E8F0"/></linearGradient>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="640" height="460">
+      <rect width="640" height="460" fill="#fff"/>
+      <path d="M 145 82 h 34 v 45 h 45 v 34 h -45 v 45 h -34 v -45 h -45 v -34 h 45 Z" fill="#000"/>
+      <circle cx="452" cy="170" r="26" fill="#000"/>
+      <circle cx="504" cy="118" r="26" fill="#000"/>
+    </mask>
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
-  <rect x="10" y="10" width="236" height="236" rx="54" fill="none" stroke="#2A3346" stroke-width="4"/>
-  <!-- gyro orbit (back half) -->
-  <g transform="rotate(-14 128 142)" fill="none" stroke-linecap="round">
-    <path d="M 18 142 A 110 36 0 0 1 238 142" stroke="#1F7FB0" stroke-width="12"/>
-  </g>
-  <!-- gamepad silhouette -->
-  <path transform="translate(4.80 38.22) scale(0.385)" d="M 320 40 L 162 40 A 108 108 0 0 0 54 148 C 54 200 53 252 55 298 C 58 344 65 382 80 403 C 95 424 133 426 148 407 C 161 390 170 354 181 324 C 191 297 212 286 242 286 C 268 286 292 278 320 278 C 348 278 372 286 398 286 C 428 286 449 297 459 324 C 470 354 479 390 492 407 C 507 426 545 424 560 403 C 575 382 582 344 585 298 C 587 252 586 200 586 148 A 108 108 0 0 0 478 40 L 320 40 Z" fill="url(#pad)"/>
-  <g fill="#131722">
-    <path d="M 61.395 67.87 h 11.55 v 11.165000000000001 h 11.165000000000001 v 11.55 h -11.165000000000001 v 11.165000000000001 h -11.55 v -11.165000000000001 h -11.165000000000001 v -11.55 h 11.165000000000001 Z"/>
-    <circle cx="188.83" cy="68.25" r="6.54"/>
-    <circle cx="171.89" cy="85.19" r="6.54"/>
-    <circle cx="205.77" cy="85.19" r="6.54"/>
-    <circle cx="188.83" cy="102.13" r="6.54"/>
-    <circle cx="97.20" cy="117.53" r="14.63"/>
-    <circle cx="158.80" cy="117.53" r="14.63"/>
-  </g>
-  <!-- gyro orbit (front half) + motion node -->
-  <g transform="rotate(-14 128 142)" fill="none" stroke-linecap="round">
-    <path d="M 238 142 A 110 36 0 0 1 18 142" stroke="#0F131C" stroke-width="22" stroke-linecap="butt"/>
-    <path d="M 238 142 A 110 36 0 0 1 18 142" stroke="#38BDF8" stroke-width="12"/>
-    <circle cx="206" cy="167.5" r="17" fill="#38BDF8" stroke="#0F131C" stroke-width="7"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="54.5" fill="none" stroke="#2A3346" stroke-width="3"/>
+  <path d="M 192.3 87.4 A 100 100 0 0 0 57.3 93.3" fill="none" stroke="url(#trail)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M 41.7 108.9 L 47.4 79.2 L 71.4 103.2 Z" fill="#E2E8F0" stroke="#E2E8F0" stroke-width="6" stroke-linejoin="round"/>
+  <g transform="translate(128 166) rotate(-12) scale(0.27) translate(-320 -233)" mask="url(#cut)">
+    <path d="M 320 40 L 162 40 A 108 108 0 0 0 54 148 C 54 200 53 252 55 298 C 58 344 65 382 80 403 C 95 424 133 426 148 407 C 161 390 170 354 181 324 C 191 297 212 286 242 286 C 268 286 292 278 320 278 C 348 278 372 286 398 286 C 428 286 449 297 459 324 C 470 354 479 390 492 407 C 507 426 545 424 560 403 C 575 382 582 344 585 298 C 587 252 586 200 586 148 A 108 108 0 0 0 478 40 L 320 40 Z" fill="url(#pad)"/>
+    <path d="M 320 40 L 162 40 A 108 108 0 0 0 54 148 C 54 200 53 252 55 298 C 58 344 65 382 80 403 C 95 424 133 426 148 407 C 161 390 170 354 181 324 C 191 297 212 286 242 286 C 268 286 292 278 320 278 C 348 278 372 286 398 286 C 428 286 449 297 459 324 C 470 354 479 390 492 407 C 507 426 545 424 560 403 C 575 382 582 344 585 298 C 587 252 586 200 586 148 A 108 108 0 0 0 478 40 L 320 40 Z" fill="url(#sheen)"/>
   </g>
 </svg>

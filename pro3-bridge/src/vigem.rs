@@ -37,13 +37,13 @@ pub struct VigemBridge {
 
 impl VigemBridge {
     pub fn connect(mode: PadMode) -> Result<Self, String> {
-        let client = Client::connect().map_err(|e| format!("ViGEmBus no disponible: {e}"))?;
+        let client = Client::connect().map_err(|e| format!("ViGEmBus not available: {e}"))?;
         let target = match mode {
             PadMode::Ds4NativeGyro => {
                 let pending = client
                     .new_ds4_target()
                     .plug()
-                    .map_err(|e| format!("Error al crear DS4 virtual: {e}"))?;
+                    .map_err(|e| format!("Could not create virtual DualShock 4: {e}"))?;
                 let handle = pending
                     .wait_for_ready_timeout(Duration::from_secs(2))
                     .unwrap_or_else(|_| pending.assume_ready());
@@ -54,14 +54,14 @@ impl VigemBridge {
                 let pending = client
                     .new_x360_target()
                     .plug()
-                    .map_err(|e| format!("Error al crear Xbox 360 virtual: {e}"))?;
+                    .map_err(|e| format!("Could not create virtual Xbox 360 pad: {e}"))?;
                 let handle = pending
                     .wait_for_ready_timeout(Duration::from_secs(2))
                     .unwrap_or_else(|_| pending.assume_ready());
                 let notif = handle.register_notification().ok();
                 ActiveTarget::X360 { handle, notif }
             }
-            PadMode::None => return Err("Modo None".into()),
+            PadMode::None => return Err("No virtual pad selected".into()),
         };
         Ok(Self {
             _client: client,
